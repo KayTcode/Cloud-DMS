@@ -17,4 +17,8 @@
     <ProjectReference Include="..\CleanArchCqrs.Application\CleanArchCqrs.Application.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <Folder Include="Repositories\" />
+  </ItemGroup>
+
 </Project>

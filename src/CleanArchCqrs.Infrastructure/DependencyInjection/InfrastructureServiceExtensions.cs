@@ -1,6 +1,4 @@
-using CleanArchCqrs.Domain.Interfaces;
 using CleanArchCqrs.Infrastructure.Persistence;
-using CleanArchCqrs.Infrastructure.Repositories;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -20,7 +18,6 @@ public static class InfrastructureServiceExtensions
         });
 
         // Repository
-        services.AddScoped<IProductRepository, ProductRepository>();
 
         return services;
     }

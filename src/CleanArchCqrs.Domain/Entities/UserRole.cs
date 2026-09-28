@@ -1,4 +1,4 @@
-﻿using Domain.Common;
+﻿using CleanArchCqrs.Domain.Common;
 using System;
 using System.Collections.Generic;
 using System.Linq;

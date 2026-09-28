@@ -4,7 +4,6 @@ using CleanArchCqrs.Application.Products.Commands.DeleteProduct;
 using CleanArchCqrs.Application.Products.Commands.UpdateProduct;
 using CleanArchCqrs.Application.Products.Queries.GetProduct;
 using CleanArchCqrs.Application.Products.Queries.GetProducts;
-using CleanArchCqrs.Domain.Entities;
 using MediatR;
 using Microsoft.AspNetCore.Mvc;
 
