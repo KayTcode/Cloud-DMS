@@ -25,6 +25,22 @@ namespace Domain.Entities
 
         public bool IsActive =>
             RevokedAt == null && ExpiresAt > DateTime.UtcNow;
+        private RefreshToken() { }
 
+        public RefreshToken(Guid id, Guid userId, string tokenHash, DateTime expiresAt, string? createdByIp) : base(id)
+        {
+            UserId = userId;
+            TokenHash = tokenHash;
+            ExpiresAt = expiresAt;
+            CreatedByIp = createdByIp;
+        }
+
+        public void Revoke(string? replacedByTokenHash = null)
+        {
+            if (RevokedAt.HasValue) return;
+
+            RevokedAt = DateTime.UtcNow;
+            ReplacedByTokenHash = replacedByTokenHash;
+        }
     }
 }

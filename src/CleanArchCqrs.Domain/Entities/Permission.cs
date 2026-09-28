@@ -15,5 +15,11 @@ namespace Domain.Entities
 
         public ICollection<RolePermission> RolePermissions { get; private set; }
             = new List<RolePermission>();
+        private Permission() { }
+        public Permission(Guid id, string name, string? description) : base(id)
+        {
+            Name = name;
+            Description = description;
+        }
     }
 }

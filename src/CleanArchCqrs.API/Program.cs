@@ -1,10 +1,13 @@
 using CleanArchCqrs.Application.DependencyInjection;
 using CleanArchCqrs.Infrastructure.DependencyInjection;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
+using System.Text;
 
 namespace CleanArchCqrs.API;
 
@@ -19,13 +22,42 @@ public class Program
         var builder = WebApplication.CreateBuilder(args);
 
         // Add services
-        builder.Services.AddControllers()
-            .AddJsonOptions(options =>
-            {
-                options.JsonSerializerOptions.DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull;
-                options.JsonSerializerOptions.PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.CamelCase;
-            });
+        builder.Services.AddControllers();
 
+        //JWT
+        var jwtSettings = builder.Configuration.GetSection("JwtSettings");
+
+        var secretKey = jwtSettings["SecretKey"] ?? throw new InvalidOperationException("JWT SecretKey is not configured.");
+
+        var issuer = jwtSettings["Issuer"] ?? throw new InvalidOperationException("JWT Issuer is not configured.");
+
+        var audience = jwtSettings["Audience"] ?? throw new InvalidOperationException("JWT Audience is not configured.");
+
+        builder.Services
+            .AddAuthentication(
+                JwtBearerDefaults.AuthenticationScheme)
+            .AddJwtBearer(options =>
+            {
+                options.TokenValidationParameters =
+                    new TokenValidationParameters
+                    {
+                        ValidateIssuer = true,
+                        ValidIssuer = issuer,
+
+                        ValidateAudience = true,
+                        ValidAudience = audience,
+
+                        ValidateLifetime = true,
+
+                        ValidateIssuerSigningKey = true,
+
+                        IssuerSigningKey =
+                            new SymmetricSecurityKey(
+                                Encoding.UTF8.GetBytes(
+                                    secretKey))
+                    };
+            });
+        builder.Services.AddAuthorization();
         builder.Services.AddEndpointsApiExplorer();
         builder.Services.AddSwaggerGen(c =>
         {
@@ -38,9 +70,8 @@ public class Program
         });
 
         // Register application and infrastructure services
+        builder.Services.AddInfrastructureServices(builder.Configuration);
         builder.Services.AddApplicationServices();
-        builder.Services.AddInfrastructureServices(builder.Configuration.GetConnectionString("DefaultConnection"));
-
         var app = builder.Build();
 
         // Configure pipeline
@@ -55,6 +86,7 @@ public class Program
         }
 
         app.UseHttpsRedirection();
+        app.UseAuthentication();
         app.UseAuthorization();
         app.MapControllers();
 

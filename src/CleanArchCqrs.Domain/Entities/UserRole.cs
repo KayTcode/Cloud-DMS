@@ -16,5 +16,12 @@ namespace Domain.Entities
         public User User { get; private set; } = null!;
 
         public Role Role { get; private set; } = null!;
+        private UserRole() { }
+
+        public UserRole(Guid id, Guid userId, Guid roleId) : base(id)
+        {
+            UserId = userId;
+            RoleId = roleId;
+        }
     }
 }
