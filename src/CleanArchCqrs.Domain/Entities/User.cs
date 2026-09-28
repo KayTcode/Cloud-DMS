@@ -1,6 +1,6 @@
-using Domain.Common;
+using CleanArchCqrs.Domain.Common;
 
-namespace Domain.Entities;
+namespace CleanArchCqrs.Domain.Entities;
 
 /// <summary>
 /// Represents a system user across all role tiers.
@@ -17,22 +17,24 @@ public class User : BaseEntity
 
     public string Email { get; set; } = string.Empty;
     public string PasswordHash { get; set; } = string.Empty;
-    public string FirstName { get; private set; } = string.Empty;
-    public string LastName { get; private set; } = string.Empty;
+    public string FirstName { get; set; } = string.Empty;
+    public string LastName { get; set; } = string.Empty;
     public string? PhoneNumber { get; set; }
     public bool IsActive { get; set; } = true;
-    public DateTime? LastLoginAt { get; private set; }
+    public DateTime? LastLoginAt { get; set; }
 
-    public ICollection<UserRole> UserRoles { get; private set; }
+    public string FullName => $"{FirstName} {LastName}".Trim();
+
+    public ICollection<UserRole> UserRoles { get; set; }
         = new List<UserRole>();
 
-    public ICollection<FileEntry> Files { get; private set; }
+    public ICollection<FileEntry> Files { get; set; }
         = new List<FileEntry>();
 
-    public ICollection<RefreshToken> RefreshTokens { get; private set; }
+    public ICollection<RefreshToken> RefreshTokens { get; set; }
         = new List<RefreshToken>();
 
-    public ICollection<AuditLog> AuditLogs { get; private set; }
+    public ICollection<AuditLog> AuditLogs { get; set; }
         = new List<AuditLog>();
 
     public void Active()
@@ -40,11 +42,13 @@ public class User : BaseEntity
         IsActive = true;
         UpdatedAt = DateTime.UtcNow;
     }
+
     public void Inactive()
     {
         IsActive = false;
         UpdatedAt = DateTime.UtcNow;
     }
+
     public void ChangeDepartment(Guid? departmentId)
     {
         DepartmentId = departmentId;

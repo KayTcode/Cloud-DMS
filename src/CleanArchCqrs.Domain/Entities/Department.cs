@@ -1,6 +1,6 @@
-using Domain.Common;
+using CleanArchCqrs.Domain.Common;
 
-namespace Domain.Entities;
+namespace CleanArchCqrs.Domain.Entities;
 
 /// <summary>
 /// Represents a department inside an enterprise tenant (e.g., IT, HR, Accounting).

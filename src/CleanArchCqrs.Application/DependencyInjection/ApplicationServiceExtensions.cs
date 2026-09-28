@@ -12,15 +12,17 @@ public static class ApplicationServiceExtensions
 {
     public static IServiceCollection AddApplicationServices(this IServiceCollection services)
     {
-        // MediatR - register all handlers in this assembly
-        services.AddMediatR(cfg => cfg.RegisterServicesFromAssembly(typeof(ApplicationServiceExtensions).Assembly));
+        var assembly = typeof(ApplicationServiceExtensions).Assembly;
 
-        // Pipeline behaviors
-        services.AddTransient(typeof(LoggingBehavior<,>));
-        services.AddTransient(typeof(ValidationBehavior<,>));
+        // MediatR
+        services.AddMediatR(cfg =>
+        {
+            cfg.RegisterServicesFromAssembly(assembly);
+            cfg.AddBehavior(typeof(IPipelineBehavior<,>), typeof(ValidationBehavior<,>));
+        });
 
-        // FluentValidation - validators are discovered automatically
-        // In full version: validators with rules are added here
+        // FluentValidation
+        services.AddValidatorsFromAssembly(assembly);
 
         return services;
     }
