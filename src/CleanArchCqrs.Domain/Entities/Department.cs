@@ -17,4 +17,14 @@ public class Department : BaseEntity
 
     // Navigation properties
     public ICollection<User> Users { get; set; } = new List<User>();
+
+    private Department() { } // For EF Core
+
+    public Department(Guid id, Guid tenantId, string name, string code) : base(id)
+    {
+        TenantId = tenantId;
+        Name = name;
+        Code = code;
+        IsActive = true;
+    }
 }

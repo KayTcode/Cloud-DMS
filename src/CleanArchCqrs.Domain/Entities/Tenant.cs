@@ -17,6 +17,14 @@ public class Tenant : BaseEntity
     // Navigation properties
     public ICollection<Department> Departments { get; set; } = new List<Department>();
     public ICollection<User> Users { get; set; } = new List<User>();
-    public ICollection<FileEntry> Files { get; private set; }
-        = new List<FileEntry>();
+    public ICollection<FileEntry> Files { get; private set; } = new List<FileEntry>();
+
+    private Tenant() { } // For EF Core
+    public Tenant(Guid id, string name, string code, long storageQuotaBytes) : base(id)
+    {
+        Name = name;
+        Code = code;
+        StorageQuotaBytes = storageQuotaBytes;
+        IsActive = true;
+    }
 }

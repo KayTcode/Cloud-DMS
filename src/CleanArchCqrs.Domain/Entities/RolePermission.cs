@@ -16,5 +16,11 @@ namespace Domain.Entities
         public Role Role { get; private set; } = null!;
 
         public Permission Permission { get; private set; } = null!;
+        private RolePermission() { }
+        public RolePermission(Guid id, Guid roleId, Guid permissionId) : base(id)
+        {
+            RoleId = roleId;
+            PermissionId = permissionId;
+        }
     }
 }
