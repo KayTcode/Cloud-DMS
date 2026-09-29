@@ -13,8 +13,6 @@ namespace Domain.Entities
 
         public string? Description { get; private set; }
 
-        public Tenant? Tenant { get; private set; }
-
         public ICollection<UserRole> UserRoles { get; private set; }
             = new List<UserRole>();
 

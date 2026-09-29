@@ -31,6 +31,7 @@ namespace CleanArchCqrs.Infrastructure.DependencyInjection
 
             services.AddScoped<IJwtTokenService, JwtTokenService>();
             services.AddScoped<IUserRepository, UserRepository>();
+            services.AddScoped<IUserAuthorizationRepository, UserAuthorizationRepository>();
 
             // Database
             var connectionString =

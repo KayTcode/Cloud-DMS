@@ -21,22 +21,24 @@ namespace CleanArchCqrs.Infrastructure.Services
         {
             _options = options.Value;
         }
-        public JwtTokenResult GenerateAccessToken(User user)
+        public JwtTokenResult GenerateAccessToken(User user, string role, IEnumerable<string> permissions)
         {
             var expiresAt =
             DateTime.UtcNow.AddMinutes(
                 _options.ExpirationMinutes);
 
             var claims = new List<Claim>
-        {
-            new(
-                JwtRegisteredClaimNames.Sub,
-                user.Id.ToString()),
+            {
+                new(JwtRegisteredClaimNames.Sub, user.Id.ToString()),
 
-            new(
-                JwtRegisteredClaimNames.Email,
-                user.Email)
-        };
+                new(JwtRegisteredClaimNames.Email, user.Email),
+                new(ClaimTypes.Email, user.Email),
+                new(ClaimTypes.Role, role)
+            };
+            foreach (var permission in permissions.Distinct())
+            {
+                claims.Add(new Claim("permission", permission));
+            }
 
             if (user.TenantId.HasValue)
             {
