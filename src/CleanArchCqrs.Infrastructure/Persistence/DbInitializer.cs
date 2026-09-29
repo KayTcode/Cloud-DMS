@@ -1,4 +1,4 @@
-﻿using Domain.Entities;
+using CleanArchCqrs.Domain.Entities;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using System;

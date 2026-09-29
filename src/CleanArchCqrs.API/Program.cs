@@ -29,6 +29,17 @@ public class Program
         // Add services
         builder.Services.AddControllers();
 
+        // Add CORS
+        builder.Services.AddCors(options =>
+        {
+            options.AddPolicy("AllowFrontend", policy =>
+            {
+                policy.AllowAnyOrigin()
+                      .AllowAnyMethod()
+                      .AllowAnyHeader();
+            });
+        });
+
         // JWT Configuration
         var jwtSettings = builder.Configuration.GetSection("JwtSettings");
         var secretKey = jwtSettings["SecretKey"] ?? "DefaultSuperSecretKey12345678901234567890";
@@ -125,7 +136,7 @@ public class Program
             });
         }
 
-        app.UseHttpsRedirection();
+        app.UseCors("AllowFrontend");
         app.UseAuthentication();
         app.UseAuthorization();
         app.MapControllers();
