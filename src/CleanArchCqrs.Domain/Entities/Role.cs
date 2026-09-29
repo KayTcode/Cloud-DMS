@@ -5,24 +5,27 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace Domain.Entities
-{
-    public class Role : BaseEntity
-    {
-        public string Name { get; private set; } = string.Empty;
+namespace CleanArchCqrs.Domain.Entities;
 
-        public string? Description { get; private set; }
+public class Role : BaseEntity
+{
+    public Guid? TenantId { get; set; }
+
+    public string Name { get; set; } = string.Empty;
+
+    public string? Description { get; set; }
 
         public ICollection<UserRole> UserRoles { get; private set; }
             = new List<UserRole>();
 
-        public ICollection<RolePermission> RolePermissions { get; private set; }
-            = new List<RolePermission>();
-        private Role() { }
-        public Role(Guid id, string name, string? description) : base(id)
-        {
-            Name = name;
-            Description = description;
-        }
+    public ICollection<RolePermission> RolePermissions { get; set; } = new List<RolePermission>();
+
+    private Role() { }
+
+    public Role(Guid id, string name, string? description, Guid? tenantId = null) : base(id)
+    {
+        Name = name;
+        Description = description;
+        TenantId = tenantId;
     }
 }

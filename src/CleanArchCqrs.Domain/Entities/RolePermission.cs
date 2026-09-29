@@ -5,15 +5,15 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace Domain.Entities
+namespace CleanArchCqrs.Domain.Entities;
+
+public class RolePermission : BaseEntity
 {
-    public class RolePermission : BaseEntity
-    {
-        public Guid RoleId { get; private set; }
+    public Guid RoleId { get; set; }
 
-        public Guid PermissionId { get; private set; }
+    public Guid PermissionId { get; set; }
 
-        public Role Role { get; private set; } = null!;
+    public Role Role { get; set; } = null!;
 
         public Permission Permission { get; private set; } = null!;
         private RolePermission() { }

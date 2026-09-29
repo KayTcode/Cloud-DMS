@@ -1,6 +1,6 @@
 using CleanArchCqrs.Domain.Common;
 
-namespace Domain.Entities;
+namespace CleanArchCqrs.Domain.Entities;
 
 /// <summary>
 /// Represents an enterprise tenant (organization / company).

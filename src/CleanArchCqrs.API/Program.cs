@@ -9,6 +9,7 @@ using Microsoft.AspNetCore.Hosting;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
 using System.Text;
@@ -17,8 +18,7 @@ using System.Threading.Tasks;
 namespace CleanArchCqrs.API;
 
 /// <summary>
-/// Application startup - wires up all layers, middleware, and Swagger.
-/// Full configuration with health checks, rate limiting, and caching is in the Patreon version.
+/// Application startup - wires up all layers, middleware, Swagger, and seeds default data.
 /// </summary>
 public class Program
 {
@@ -69,9 +69,9 @@ public class Program
         {
             c.SwaggerDoc("v1", new OpenApiInfo
             {
-                Title = "Clean Architecture CQRS Starter",
+                Title = "Cloud DMS API",
                 Version = "v1",
-                Description = "Starter template for Clean Architecture with CQRS and MediatR in ASP.NET Core 10"
+                Description = "Enterprise Multi-Tenant Document Management System with Clean Architecture & CQRS"
             });
         });
 
@@ -101,7 +101,7 @@ public class Program
             app.UseSwagger();
             app.UseSwaggerUI(c =>
             {
-                c.SwaggerEndpoint("/swagger/v1/swagger.json", "CleanArchCqrs API v1");
+                c.SwaggerEndpoint("/swagger/v1/swagger.json", "Cloud DMS API v1");
                 c.RoutePrefix = string.Empty; // Swagger at root
             });
         }
@@ -111,6 +111,6 @@ public class Program
         app.UseAuthorization();
         app.MapControllers();
 
-        app.Run();
+        await app.RunAsync();
     }
 }

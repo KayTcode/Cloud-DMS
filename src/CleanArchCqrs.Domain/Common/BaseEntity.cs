@@ -1,15 +1,12 @@
 namespace CleanArchCqrs.Domain.Common;
 
 /// <summary>
-/// Base entity with ID - all domain entities inherit from this.
-/// In the full Patreon version, this includes additional audit fields and domain event handling.
+/// Base entity with ID and audit timestamps - all domain entities inherit from this.
 /// </summary>
 public abstract class BaseEntity
 {
     public Guid Id { get; protected set; }
-
-    public DateTime CreatedAt { get; protected set; }
-
+    public DateTime CreatedAt { get; protected set; } = DateTime.UtcNow;
     public DateTime? UpdatedAt { get; protected set; }
 
     protected BaseEntity()
@@ -22,7 +19,7 @@ public abstract class BaseEntity
         CreatedAt = DateTime.UtcNow;
     }
 
-    protected void SetUpdatedAt()
+    public void SetUpdatedAt()
     {
         UpdatedAt = DateTime.UtcNow;
     }

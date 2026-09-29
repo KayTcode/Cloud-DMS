@@ -1,6 +1,6 @@
 using CleanArchCqrs.Domain.Common;
 
-namespace Domain.Entities;
+namespace CleanArchCqrs.Domain.Entities;
 
 public class User : BaseEntity
 {
@@ -19,16 +19,18 @@ public class User : BaseEntity
     public bool IsActive { get; private set; } = true;
     public DateTime? LastLoginAt { get; private set; }
 
-    public ICollection<UserRole> UserRoles { get; private set; }
+    public string FullName => $"{FirstName} {LastName}".Trim();
+
+    public ICollection<UserRole> UserRoles { get; set; }
         = new List<UserRole>();
 
-    public ICollection<FileEntry> Files { get; private set; }
+    public ICollection<FileEntry> Files { get; set; }
         = new List<FileEntry>();
 
-    public ICollection<RefreshToken> RefreshTokens { get; private set; }
+    public ICollection<RefreshToken> RefreshTokens { get; set; }
         = new List<RefreshToken>();
 
-    public ICollection<AuditLog> AuditLogs { get; private set; }
+    public ICollection<AuditLog> AuditLogs { get; set; }
         = new List<AuditLog>();
     private User() { } // For EF Core
     public User(Guid? tenantId, Guid? departmentId, string email, string passwordHash, string firstName, string lastName, string? phoneNumber)
@@ -53,11 +55,13 @@ public class User : BaseEntity
         IsActive = true;
         UpdatedAt = DateTime.UtcNow;
     }
+
     public void Inactive()
     {
         IsActive = false;
         UpdatedAt = DateTime.UtcNow;
     }
+
     public void ChangeDepartment(Guid? departmentId)
     {
         DepartmentId = departmentId;
