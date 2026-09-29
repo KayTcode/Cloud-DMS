@@ -1,7 +1,5 @@
 using CleanArchCqrs.Application.Common.Interfaces;
-using CleanArchCqrs.Domain.Interfaces;
 using CleanArchCqrs.Infrastructure.Persistence;
-using CleanArchCqrs.Infrastructure.Repositories;
 using CleanArchCqrs.Infrastructure.Services;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
@@ -32,9 +30,6 @@ public static class InfrastructureServiceExtensions
 
         services.AddScoped<IApplicationDbContext>(provider => provider.GetRequiredService<AppDbContext>());
         services.AddSingleton<IPasswordHasher, PasswordHasher>();
-
-        // Repository
-        services.AddScoped<IProductRepository, ProductRepository>();
 
         return services;
     }

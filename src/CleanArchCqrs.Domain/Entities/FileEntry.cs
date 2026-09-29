@@ -1,38 +1,32 @@
-﻿using CleanArchCqrs.Domain.Common;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
+using CleanArchCqrs.Domain.Common;
 
 namespace CleanArchCqrs.Domain.Entities;
 
 public class FileEntry : BaseEntity
 {
-    public Guid TenantId { get; private set; }
+    public Guid TenantId { get; set; }
 
-    public Guid OwnerId { get; private set; }
+    public Guid OwnerId { get; set; }
 
-    public Guid? FolderId { get; private set; }
+    public Guid? FolderId { get; set; }
 
-    public string Name { get; private set; } = string.Empty;
+    public string Name { get; set; } = string.Empty;
 
-    public string StorageKey { get; private set; } = string.Empty;
+    public string StorageKey { get; set; } = string.Empty;
 
-    public string ContentType { get; private set; } = string.Empty;
+    public string ContentType { get; set; } = string.Empty;
 
-    public long SizeBytes { get; private set; }
+    public long SizeBytes { get; set; }
 
-    public string? Hash { get; private set; }
+    public string? Hash { get; set; }
 
-    public bool IsDeleted { get; private set; }
+    public bool IsDeleted { get; set; }
 
-    public Tenant Tenant { get; private set; } = null!;
+    public Tenant Tenant { get; set; } = null!;
 
-    public User Owner { get; private set; } = null!;
+    public User Owner { get; set; } = null!;
 
-    public Folder? Folder { get; private set; }
+    public Folder? Folder { get; set; }
 
-    public ICollection<FileShare> Shares { get; private set; }
-        = new List<FileShare>();
+    public ICollection<FileShare> Shares { get; set; } = new List<FileShare>();
 }

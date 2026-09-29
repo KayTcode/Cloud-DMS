@@ -1,6 +1,6 @@
 ﻿using CleanArchCqrs.Application.Common.Interfaces;
 using CleanArchCqrs.Application.Common.Interfaces.Repositorires;
-using Domain.Entities;
+using CleanArchCqrs.Domain.Entities;
 using MediatR;
 using System;
 using System.Collections.Generic;

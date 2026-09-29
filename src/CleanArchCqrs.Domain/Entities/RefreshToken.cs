@@ -1,49 +1,40 @@
-﻿using CleanArchCqrs.Domain.Common;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
+using CleanArchCqrs.Domain.Common;
 
 namespace CleanArchCqrs.Domain.Entities;
 
 public class RefreshToken : BaseEntity
 {
-    public Guid UserId { get; private set; }
+    public Guid UserId { get; set; }
 
-    public string TokenHash { get; private set; } = string.Empty;
+    public string TokenHash { get; set; } = string.Empty;
 
-    public DateTime ExpiresAt { get; private set; }
+    public DateTime ExpiresAt { get; set; }
 
-    public DateTime? RevokedAt { get; private set; }
+    public DateTime? RevokedAt { get; set; }
 
-    public string? ReplacedByTokenHash { get; private set; }
+    public string? ReplacedByTokenHash { get; set; }
 
-    public string? CreatedByIp { get; private set; }
+    public string? CreatedByIp { get; set; }
 
-    public User User { get; private set; } = null!;
+    public User User { get; set; } = null!;
 
-        public bool IsActive =>
-            RevokedAt == null && ExpiresAt > DateTime.UtcNow;
-        private RefreshToken() { }
+    public bool IsActive => RevokedAt == null && ExpiresAt > DateTime.UtcNow;
 
-        public RefreshToken(Guid id, Guid userId, string tokenHash, DateTime expiresAt, string? createdByIp) : base(id)
-        {
-            UserId = userId;
-            TokenHash = tokenHash;
-            ExpiresAt = expiresAt;
-            CreatedByIp = createdByIp;
-        }
+    public RefreshToken() { }
 
-        public void Revoke(string? replacedByTokenHash = null)
-        {
-            if (RevokedAt.HasValue) return;
-
-            RevokedAt = DateTime.UtcNow;
-            ReplacedByTokenHash = replacedByTokenHash;
-        }
-
-        public bool IsActive =>
-        RevokedAt == null && ExpiresAt > DateTime.UtcNow;
-
+    public RefreshToken(Guid id, Guid userId, string tokenHash, DateTime expiresAt, string? createdByIp) : base(id)
+    {
+        UserId = userId;
+        TokenHash = tokenHash;
+        ExpiresAt = expiresAt;
+        CreatedByIp = createdByIp;
     }
+
+    public void Revoke(string? replacedByTokenHash = null)
+    {
+        if (RevokedAt.HasValue) return;
+
+        RevokedAt = DateTime.UtcNow;
+        ReplacedByTokenHash = replacedByTokenHash;
+    }
+}

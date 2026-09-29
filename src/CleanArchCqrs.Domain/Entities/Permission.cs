@@ -1,9 +1,4 @@
-﻿using CleanArchCqrs.Domain.Common;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
+using CleanArchCqrs.Domain.Common;
 
 namespace CleanArchCqrs.Domain.Entities;
 
@@ -13,9 +8,9 @@ public class Permission : BaseEntity
 
     public string? Description { get; set; }
 
-    public ICollection<RolePermission> RolePermissions { get; private set; } = new List<RolePermission>();
+    public ICollection<RolePermission> RolePermissions { get; set; } = new List<RolePermission>();
 
-    private Permission() { }
+    public Permission() { }
 
     public Permission(Guid id, string name, string? description) : base(id)
     {

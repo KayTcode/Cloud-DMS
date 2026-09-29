@@ -29,42 +29,32 @@ public class Program
         // Add services
         builder.Services.AddControllers();
 
-        //JWT
+        // JWT Configuration
         var jwtSettings = builder.Configuration.GetSection("JwtSettings");
-
-        var secretKey = jwtSettings["SecretKey"] ?? throw new InvalidOperationException("JWT SecretKey is not configured.");
-
-        var issuer = jwtSettings["Issuer"] ?? throw new InvalidOperationException("JWT Issuer is not configured.");
-
-        var audience = jwtSettings["Audience"] ?? throw new InvalidOperationException("JWT Audience is not configured.");
+        var secretKey = jwtSettings["SecretKey"] ?? "DefaultSuperSecretKey12345678901234567890";
+        var issuer = jwtSettings["Issuer"] ?? "CloudDMS";
+        var audience = jwtSettings["Audience"] ?? "CloudDMSUsers";
 
         builder.Services
-            .AddAuthentication(
-                JwtBearerDefaults.AuthenticationScheme)
+            .AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
             .AddJwtBearer(options =>
             {
-                options.TokenValidationParameters =
-                    new TokenValidationParameters
-                    {
-                        ValidateIssuer = true,
-                        ValidIssuer = issuer,
-
-                        ValidateAudience = true,
-                        ValidAudience = audience,
-
-                        ValidateLifetime = true,
-
-                        ValidateIssuerSigningKey = true,
-
-                        IssuerSigningKey =
-                            new SymmetricSecurityKey(
-                                Encoding.UTF8.GetBytes(
-                                    secretKey))
-                    };
+                options.TokenValidationParameters = new TokenValidationParameters
+                {
+                    ValidateIssuer = true,
+                    ValidIssuer = issuer,
+                    ValidateAudience = true,
+                    ValidAudience = audience,
+                    ValidateLifetime = true,
+                    ValidateIssuerSigningKey = true,
+                    IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(secretKey))
+                };
             });
+
         builder.Services.AddAuthorization();
         builder.Services.AddSingleton<IAuthorizationPolicyProvider, PermissionPolicyProvider>();
         builder.Services.AddEndpointsApiExplorer();
+
         builder.Services.AddSwaggerGen(c =>
         {
             c.SwaggerDoc("v1", new OpenApiInfo
@@ -73,11 +63,40 @@ public class Program
                 Version = "v1",
                 Description = "Enterprise Multi-Tenant Document Management System with Clean Architecture & CQRS"
             });
+
+            // Prevent schema ID collisions across namespaces
+            c.CustomSchemaIds(type => type.FullName?.Replace("+", "."));
+
+            // Add JWT Bearer Auth definition to Swagger
+            c.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
+            {
+                Description = "JWT Authorization header using the Bearer scheme. Example: \"Authorization: Bearer {token}\"",
+                Name = "Authorization",
+                In = ParameterLocation.Header,
+                Type = SecuritySchemeType.ApiKey,
+                Scheme = "Bearer"
+            });
+
+            c.AddSecurityRequirement(new OpenApiSecurityRequirement
+            {
+                {
+                    new OpenApiSecurityScheme
+                    {
+                        Reference = new OpenApiReference
+                        {
+                            Type = ReferenceType.SecurityScheme,
+                            Id = "Bearer"
+                        }
+                    },
+                    Array.Empty<string>()
+                }
+            });
         });
 
         // Register application and infrastructure services
         builder.Services.AddInfrastructureServices(builder.Configuration);
         builder.Services.AddApplicationServices();
+
         var app = builder.Build();
         using (var scope = app.Services.CreateScope())
         {

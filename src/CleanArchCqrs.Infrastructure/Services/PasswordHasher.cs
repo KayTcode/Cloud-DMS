@@ -1,24 +1,26 @@
-﻿using CleanArchCqrs.Application.Common.Interfaces;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
+using CleanArchCqrs.Application.Common.Interfaces;
 
-namespace CleanArchCqrs.Infrastructure.Services
+namespace CleanArchCqrs.Infrastructure.Services;
+
+public sealed class PasswordHasher : IPasswordHasher
 {
-    public sealed class PasswordHasher : IPasswordHasher
+    public string Hash(string password)
     {
-        public string Hash(string password)
-        {
-            return BCrypt.Net.BCrypt.HashPassword(password);
-        }
+        return BCrypt.Net.BCrypt.HashPassword(password);
+    }
 
-        public bool Verify(string password, string hashedPassword)
-        {
-            return BCrypt.Net.BCrypt.Verify(
-            password,
-            hashedPassword);
-        }
+    public string HashPassword(string password)
+    {
+        return Hash(password);
+    }
+
+    public bool Verify(string password, string hashedPassword)
+    {
+        return BCrypt.Net.BCrypt.Verify(password, hashedPassword);
+    }
+
+    public bool VerifyPassword(string password, string hashedPassword)
+    {
+        return Verify(password, hashedPassword);
     }
 }

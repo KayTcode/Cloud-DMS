@@ -1,27 +1,22 @@
-﻿using CleanArchCqrs.Domain.Common;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
+using CleanArchCqrs.Domain.Common;
 
 namespace CleanArchCqrs.Domain.Entities;
 
 public class FileShare : BaseEntity
 {
-    public Guid FileEntryId { get; private set; }
+    public Guid FileEntryId { get; set; }
 
-    public Guid SharedWithUserId { get; private set; }
+    public Guid SharedWithUserId { get; set; }
 
-    public bool CanRead { get; private set; }
+    public bool CanRead { get; set; }
 
-    public bool CanWrite { get; private set; }
+    public bool CanWrite { get; set; }
 
-    public bool CanDelete { get; private set; }
+    public bool CanDelete { get; set; }
 
-    public DateTime? ExpiresAt { get; private set; }
+    public DateTime? ExpiresAt { get; set; }
 
-    public FileEntry FileEntry { get; private set; } = null!;
+    public FileEntry FileEntry { get; set; } = null!;
 
-    public User SharedWithUser { get; private set; } = null!;
+    public User SharedWithUser { get; set; } = null!;
 }

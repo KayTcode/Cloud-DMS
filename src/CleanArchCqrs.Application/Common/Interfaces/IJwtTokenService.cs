@@ -1,4 +1,4 @@
-﻿using Domain.Entities;
+﻿using CleanArchCqrs.Domain.Entities;
 using System;
 using System.Collections;
 using System.Collections.Generic;

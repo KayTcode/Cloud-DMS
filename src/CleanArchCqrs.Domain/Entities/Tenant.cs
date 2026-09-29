@@ -11,15 +11,16 @@ public class Tenant : BaseEntity
     public string Code { get; set; } = string.Empty; // Unique tenant identifier (e.g., FPT, VNG)
     public string? Description { get; set; }
     public long StorageQuotaBytes { get; set; } = 10L * 1024 * 1024 * 1024; // Default 10 GB
-    public long StorageUsedBytes { get; private set; }
+    public long StorageUsedBytes { get; set; }
     public bool IsActive { get; set; } = true;
 
     // Navigation properties
     public ICollection<Department> Departments { get; set; } = new List<Department>();
     public ICollection<User> Users { get; set; } = new List<User>();
-    public ICollection<FileEntry> Files { get; private set; } = new List<FileEntry>();
+    public ICollection<FileEntry> Files { get; set; } = new List<FileEntry>();
 
-    private Tenant() { } // For EF Core
+    public Tenant() { }
+
     public Tenant(Guid id, string name, string code, long storageQuotaBytes) : base(id)
     {
         Name = name;

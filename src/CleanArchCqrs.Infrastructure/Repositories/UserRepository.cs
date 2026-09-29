@@ -1,6 +1,6 @@
 ﻿using CleanArchCqrs.Application.Common.Interfaces.Repositorires;
 using CleanArchCqrs.Infrastructure.Persistence;
-using Domain.Entities;
+using CleanArchCqrs.Domain.Entities;
 using Microsoft.EntityFrameworkCore;
 using System;
 using System.Collections.Generic;
