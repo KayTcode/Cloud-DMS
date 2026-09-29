@@ -1,17 +1,19 @@
-using CleanArchCqrs.Application.Common.Interfaces;
+using CleanArchCqrs.API.Authorization;
 using CleanArchCqrs.Application.DependencyInjection;
 using CleanArchCqrs.Infrastructure.DependencyInjection;
 using CleanArchCqrs.Infrastructure.Persistence;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
-using Microsoft.Extensions.Configuration;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
 using System.Text;
+using System.Threading.Tasks;
 
 namespace CleanArchCqrs.API;
 
@@ -61,6 +63,7 @@ public class Program
                     };
             });
         builder.Services.AddAuthorization();
+        builder.Services.AddSingleton<IAuthorizationPolicyProvider, PermissionPolicyProvider>();
         builder.Services.AddEndpointsApiExplorer();
         builder.Services.AddSwaggerGen(c =>
         {
@@ -76,25 +79,22 @@ public class Program
         builder.Services.AddInfrastructureServices(builder.Configuration);
         builder.Services.AddApplicationServices();
         var app = builder.Build();
-
-        // Seed initial data (Permissions, Roles, SystemAdmin)
         using (var scope = app.Services.CreateScope())
         {
             var services = scope.ServiceProvider;
             try
             {
                 var context = services.GetRequiredService<AppDbContext>();
-                var passwordHasher = services.GetRequiredService<IPasswordHasher>();
+                await context.Database.MigrateAsync();
                 var logger = services.GetRequiredService<ILogger<Program>>();
-                await DbInitializer.SeedDefaultDataAsync(context, passwordHasher, logger);
+                await DbInitializer.SeedDefaultDataAsync(context, logger);
             }
             catch (Exception ex)
             {
                 var logger = services.GetRequiredService<ILogger<Program>>();
-                logger.LogError(ex, "An error occurred during database seeding.");
+                logger.LogError(ex, "An error occurred while migrating or seeding the database.");
             }
         }
-
         // Configure pipeline
         if (app.Environment.IsDevelopment())
         {

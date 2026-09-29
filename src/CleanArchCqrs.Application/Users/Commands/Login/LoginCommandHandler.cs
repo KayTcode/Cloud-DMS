@@ -15,12 +15,14 @@ namespace CleanArchCqrs.Application.Users.Commands.Login
         private readonly IUserRepository _userRepository;
         private readonly IPasswordHasher _passswordHasher;
         private readonly IJwtTokenService _jwtTokenService;
+        private readonly IUserAuthorizationRepository _userAuthorizationRepository;
 
-        public LoginCommandHandler(IUserRepository userRepository, IPasswordHasher passswordHasher, IJwtTokenService jwtTokenService)
+        public LoginCommandHandler(IUserRepository userRepository, IPasswordHasher passswordHasher, IJwtTokenService jwtTokenService, IUserAuthorizationRepository userAuthorizationRepository)
         {
             _userRepository = userRepository;
             _passswordHasher = passswordHasher;
             _jwtTokenService = jwtTokenService;
+            _userAuthorizationRepository = userAuthorizationRepository;
         }
 
         public async Task<LoginResponseDto> Handle(LoginCommand request, CancellationToken cancellationToken)
@@ -52,9 +54,14 @@ namespace CleanArchCqrs.Application.Users.Commands.Login
                 throw new UnauthorizedAccessException(
                     "Invalid email or password.");
             }
+            var role = await _userAuthorizationRepository.GetRoleAsync(user.Id, cancellationToken);
+            var permissions =
+                await _userAuthorizationRepository.GetPermissionsAsync(
+                    user.Id,
+                    cancellationToken);
 
             var token =
-                _jwtTokenService.GenerateAccessToken(user);
+                _jwtTokenService.GenerateAccessToken(user, role, permissions);
 
             return new LoginResponseDto(
                 token.AccessToken,

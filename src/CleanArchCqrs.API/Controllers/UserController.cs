@@ -1,6 +1,7 @@
 ﻿using CleanArchCqrs.Application.Users.Commands.CreateUser;
 using CleanArchCqrs.Application.Users.Commands.Login;
 using MediatR;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 
@@ -15,6 +16,7 @@ namespace CleanArchCqrs.API.Controllers
         {
             _mediator = mediator;
         }
+        [Authorize(Policy = "user.create")]
         [HttpPost]
         public async Task<IActionResult> CreateUser([FromBody] CreateUserCommand command, CancellationToken cancellationToken)
         {
