@@ -1,4 +1,4 @@
-﻿using CleanArchCqrs.Application.Users.Commands.CreateUser;
+using CleanArchCqrs.Application.Users.Commands.CreateUser;
 using CleanArchCqrs.Application.Users.Commands.Login;
 using MediatR;
 using Microsoft.AspNetCore.Authorization;
@@ -29,13 +29,24 @@ namespace CleanArchCqrs.API.Controllers
             return Ok();
         }
         [HttpPost("login")]
-        public async Task<IActionResult> Login([FromBody] LoginCommand command,CancellationToken cancellationToken)
+        public async Task<IActionResult> Login([FromBody] LoginCommand command, CancellationToken cancellationToken)
         {
-            var result = await _mediator.Send(
-                command,
-                cancellationToken);
+            try
+            {
+                var result = await _mediator.Send(
+                    command,
+                    cancellationToken);
 
-            return Ok(result);
+                return Ok(result);
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                return Unauthorized(new { message = ex.Message });
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(StatusCodes.Status500InternalServerError, new { message = ex.Message });
+            }
         }
     }
 }

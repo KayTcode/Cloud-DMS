@@ -11,6 +11,8 @@ public record CreateUserCommand : IRequest<Result<UserDto>>
     public string FirstName { get; init; } = string.Empty;
     public string LastName { get; init; } = string.Empty;
     public string? PhoneNumber { get; init; }
+    public string? TenantName { get; init; }
+    public string? Plan { get; init; }
     public List<Guid> RoleIds { get; init; } = new();
     public Guid? TenantId { get; init; }
     public Guid? DepartmentId { get; init; }

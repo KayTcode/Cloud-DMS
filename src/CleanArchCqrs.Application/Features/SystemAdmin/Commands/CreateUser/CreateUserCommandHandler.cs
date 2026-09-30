@@ -33,11 +33,43 @@ public class CreateUserCommandHandler : IRequestHandler<CreateUserCommand, Resul
             return Result<UserDto>.Failure($"A user with email '{request.Email}' already exists.");
         }
 
-        // 2. Validate Tenant & Department if provided
+        // 2. Handle Tenant Provisioning or Validation
         Tenant? tenant = null;
         Department? department = null;
 
-        if (request.TenantId.HasValue)
+        if (!string.IsNullOrWhiteSpace(request.TenantName))
+        {
+            // Calculate storage quota based on selected plan
+            var planName = request.Plan?.Trim().ToLowerInvariant() ?? "enterprise";
+            var quotaBytes = planName switch
+            {
+                "starter" => 10L * 1024 * 1024 * 1024,       // 10 GB
+                "business" => 50L * 1024 * 1024 * 1024,     // 50 GB
+                _ => 100L * 1024 * 1024 * 1024              // 100 GB (Enterprise)
+            };
+
+            // Generate a clean tenant code from the name
+            var cleanLetters = new string(request.TenantName.Where(char.IsLetterOrDigit).ToArray()).ToUpperInvariant();
+            var codeCandidate = string.IsNullOrWhiteSpace(cleanLetters) 
+                ? "T_" + Guid.NewGuid().ToString("N")[..6].ToUpper() 
+                : (cleanLetters.Length > 8 ? cleanLetters[..8] : cleanLetters);
+
+            // Ensure unique code
+            var codeExists = await _context.Tenants.AnyAsync(t => t.Code == codeCandidate, cancellationToken);
+            if (codeExists)
+            {
+                codeCandidate = $"{codeCandidate[..Math.Min(5, codeCandidate.Length)]}_{Guid.NewGuid().ToString("N")[..4].ToUpper()}";
+            }
+
+            tenant = new Tenant(Guid.NewGuid(), request.TenantName.Trim(), codeCandidate, quotaBytes)
+            {
+                Description = $"{request.Plan ?? "Enterprise"} Subscription Tenant Organization"
+            };
+
+            await _context.Tenants.AddAsync(tenant, cancellationToken);
+            await _context.SaveChangesAsync(cancellationToken);
+        }
+        else if (request.TenantId.HasValue)
         {
             tenant = await _context.Tenants
                 .FirstOrDefaultAsync(t => t.Id == request.TenantId.Value, cancellationToken);
@@ -58,13 +90,16 @@ public class CreateUserCommandHandler : IRequestHandler<CreateUserCommand, Resul
                 return Result<UserDto>.Failure($"Department with ID '{request.DepartmentId}' does not exist.");
             }
 
-            if (request.TenantId.HasValue && department.TenantId != request.TenantId.Value)
+            var currentTenantId = tenant?.Id ?? request.TenantId;
+            if (currentTenantId.HasValue && department.TenantId != currentTenantId.Value)
             {
                 return Result<UserDto>.Failure($"Department '{department.Name}' does not belong to Tenant '{tenant?.Name}'.");
             }
         }
 
-        // 3. Create User entity
+        // 3. Create User entity with TenantAdmin role
+        var effectiveTenantId = tenant?.Id ?? request.TenantId;
+
         var user = new User
         {
             Id = Guid.NewGuid(),
@@ -73,31 +108,20 @@ public class CreateUserCommandHandler : IRequestHandler<CreateUserCommand, Resul
             FirstName = request.FirstName.Trim(),
             LastName = request.LastName.Trim(),
             PhoneNumber = string.IsNullOrWhiteSpace(request.PhoneNumber) ? null : request.PhoneNumber.Trim(),
-            TenantId = request.TenantId,
+            TenantId = effectiveTenantId,
             Tenant = tenant,
             DepartmentId = request.DepartmentId,
             Department = department,
             IsActive = true
         };
 
-        // 4. Assign Roles if provided
-        if (request.RoleIds != null && request.RoleIds.Any())
-        {
-            var validRoleIds = await _context.Roles
-                .Where(r => request.RoleIds.Contains(r.Id))
-                .Select(r => r.Id)
-                .ToListAsync(cancellationToken);
+        // 4. Enforce TenantAdmin Role for System Admin tenant creation
+        var tenantAdminRole = await _context.Roles
+            .FirstOrDefaultAsync(r => r.Name == "TenantAdmin", cancellationToken);
 
-            foreach (var roleId in validRoleIds)
-            {
-                user.UserRoles.Add(new UserRole
-                {
-                    Id = Guid.NewGuid(),
-                    UserId = user.Id,
-                    RoleId = roleId,
-                    User = user
-                });
-            }
+        if (tenantAdminRole != null)
+        {
+            user.UserRoles.Add(new UserRole(Guid.NewGuid(), user.Id, tenantAdminRole.Id));
         }
 
         await _context.Users.AddAsync(user, cancellationToken);

@@ -1,13 +1,13 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
+namespace CleanArchCqrs.Application.Users.DTOs;
 
-namespace CleanArchCqrs.Application.Users.DTOs
-{
-    public sealed record LoginResponseDto(
+public sealed record LoginResponseDto(
     string AccessToken,
-    DateTime ExpiresAt
+    DateTime ExpiresAt,
+    Guid UserId,
+    string Email,
+    string FullName,
+    string Role,
+    Guid? TenantId,
+    List<string> Permissions
 );
-}
+

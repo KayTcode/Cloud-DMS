@@ -112,17 +112,25 @@ public class Program
         using (var scope = app.Services.CreateScope())
         {
             var services = scope.ServiceProvider;
+            var logger = services.GetRequiredService<ILogger<Program>>();
             try
             {
                 var context = services.GetRequiredService<AppDbContext>();
-                await context.Database.MigrateAsync();
-                var logger = services.GetRequiredService<ILogger<Program>>();
-                await DbInitializer.SeedDefaultDataAsync(context, logger);
+                try
+                {
+                    await context.Database.MigrateAsync();
+                }
+                catch (Exception mex)
+                {
+                    logger.LogWarning(mex, "Database migration skipped or tables already exist.");
+                }
+
+                var passwordHasher = services.GetRequiredService<CleanArchCqrs.Application.Common.Interfaces.IPasswordHasher>();
+                await DbInitializer.SeedDefaultDataAsync(context, passwordHasher, logger);
             }
             catch (Exception ex)
             {
-                var logger = services.GetRequiredService<ILogger<Program>>();
-                logger.LogError(ex, "An error occurred while migrating or seeding the database.");
+                logger.LogError(ex, "An error occurred while seeding the database.");
             }
         }
         // Configure pipeline

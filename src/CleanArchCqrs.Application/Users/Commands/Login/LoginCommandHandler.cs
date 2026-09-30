@@ -1,4 +1,4 @@
-﻿using CleanArchCqrs.Application.Common.Interfaces;
+using CleanArchCqrs.Application.Common.Interfaces;
 using CleanArchCqrs.Application.Common.Interfaces.Repositorires;
 using CleanArchCqrs.Application.Users.DTOs;
 using MediatR;
@@ -65,7 +65,13 @@ namespace CleanArchCqrs.Application.Users.Commands.Login
 
             return new LoginResponseDto(
                 token.AccessToken,
-                token.ExpiresAt);
+                token.ExpiresAt,
+                user.Id,
+                user.Email,
+                user.FullName,
+                role ?? "Employee",
+                user.TenantId,
+                permissions.ToList());
         }
     }
 }

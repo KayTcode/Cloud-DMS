@@ -1,3 +1,4 @@
+using CleanArchCqrs.Application.Common.Interfaces;
 using CleanArchCqrs.Domain.Entities;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
@@ -12,17 +13,19 @@ namespace CleanArchCqrs.Infrastructure.Persistence
     public static class DbInitializer
     {
         public static async Task SeedDefaultDataAsync(
-        AppDbContext context,
-        ILogger logger)
+            AppDbContext context,
+            IPasswordHasher passwordHasher,
+            ILogger logger)
         {
             try
             {
                 await SeedPermissionsAsync(context, logger);
                 await SeedRolesAsync(context, logger);
                 await SeedRolePermissionsAsync(context, logger);
+                await SeedTenantsAndUsersAsync(context, passwordHasher, logger);
 
                 logger.LogInformation(
-                    "Default RBAC data seeded successfully.");
+                    "Default RBAC data & demo accounts seeded successfully.");
             }
             catch (Exception ex)
             {
@@ -105,6 +108,9 @@ namespace CleanArchCqrs.Infrastructure.Persistence
                 ["TenantAdmin"] =
                     "Administrator of a tenant",
 
+                ["DepartmentAdmin"] =
+                    "Administrator of a department within a tenant",
+
                 ["Manager"] =
                     "Manager within a tenant",
 
@@ -144,6 +150,9 @@ namespace CleanArchCqrs.Infrastructure.Persistence
             var tenantAdmin = await context.Roles
                 .FirstAsync(x => x.Name == "TenantAdmin");
 
+            var departmentAdmin = await context.Roles
+                .FirstOrDefaultAsync(x => x.Name == "DepartmentAdmin");
+
             var manager = await context.Roles
                 .FirstAsync(x => x.Name == "Manager");
 
@@ -160,87 +169,115 @@ namespace CleanArchCqrs.Infrastructure.Persistence
                 ["TenantAdmin"] =
                 [
                     "tenant.read",
-                "tenant.manage",
+                    "tenant.manage",
 
-                "user.read",
-                "user.create",
-                "user.update",
-                "user.delete",
+                    "user.read",
+                    "user.create",
+                    "user.update",
+                    "user.delete",
 
-                "role.read",
-                "role.manage",
+                    "role.read",
+                    "role.manage",
 
-                "department.read",
-                "department.create",
-                "department.update",
-                "department.delete",
+                    "department.read",
+                    "department.create",
+                    "department.update",
+                    "department.delete",
 
-                "file.read",
-                "file.upload",
-                "file.update",
-                "file.delete",
-                "file.share",
+                    "file.read",
+                    "file.upload",
+                    "file.update",
+                    "file.delete",
+                    "file.share",
 
-                "folder.read",
-                "folder.create",
-                "folder.update",
-                "folder.delete",
+                    "folder.read",
+                    "folder.create",
+                    "folder.update",
+                    "folder.delete",
 
-                "storage.read",
-                "storage.manage",
+                    "storage.read",
+                    "storage.manage",
 
-                "audit.read"
+                    "audit.read"
+                ],
+
+                ["DepartmentAdmin"] =
+                [
+                    "user.read",
+                    "user.create",
+                    "user.update",
+
+                    "department.read",
+
+                    "file.read",
+                    "file.upload",
+                    "file.update",
+                    "file.delete",
+                    "file.share",
+
+                    "folder.read",
+                    "folder.create",
+                    "folder.update",
+                    "folder.delete",
+
+                    "storage.read",
+                    "storage.manage",
+
+                    "audit.read"
                 ],
 
                 ["Manager"] =
                 [
                     "user.read",
 
-                "department.read",
+                    "department.read",
 
-                "file.read",
-                "file.upload",
-                "file.update",
-                "file.delete",
-                "file.share",
+                    "file.read",
+                    "file.upload",
+                    "file.update",
+                    "file.delete",
+                    "file.share",
 
-                "folder.read",
-                "folder.create",
-                "folder.update",
-                "folder.delete",
+                    "folder.read",
+                    "folder.create",
+                    "folder.update",
+                    "folder.delete",
 
-                "storage.read"
+                    "storage.read"
                 ],
 
                 ["Employee"] =
                 [
                     "file.read",
-                "file.upload",
-                "file.update",
+                    "file.upload",
+                    "file.update",
 
-                "folder.read",
-                "folder.create",
-                "folder.update",
+                    "folder.read",
+                    "folder.create",
+                    "folder.update",
 
-                "storage.read"
+                    "storage.read"
                 ]
             };
 
-            var roleMap = new Dictionary<string, Role>
+            var roleMap = new Dictionary<string, Role?>
             {
                 ["SystemAdmin"] = systemAdmin,
                 ["TenantAdmin"] = tenantAdmin,
+                ["DepartmentAdmin"] = departmentAdmin,
                 ["Manager"] = manager,
                 ["Employee"] = employee
             };
 
             foreach (var rolePermission in rolePermissions)
             {
-                var role = roleMap[rolePermission.Key];
+                if (!roleMap.TryGetValue(rolePermission.Key, out var role) || role == null)
+                    continue;
 
                 foreach (var permissionName in rolePermission.Value)
                 {
-                    var permission = permissions[permissionName];
+                    if (!permissions.TryGetValue(permissionName, out var permission))
+                        continue;
 
                     var exists = await context.RolePermissions
                         .AnyAsync(x =>
@@ -262,6 +299,153 @@ namespace CleanArchCqrs.Infrastructure.Persistence
 
             logger.LogInformation(
                 "Role permissions seeded.");
+        }
+
+        private static async Task SeedTenantsAndUsersAsync(
+            AppDbContext context,
+            IPasswordHasher passwordHasher,
+            ILogger logger)
+        {
+            // 1. Seed Demo Tenant if none exists
+            var acmeTenant = await context.Tenants.FirstOrDefaultAsync(t => t.Code == "ACME");
+            if (acmeTenant == null)
+            {
+                acmeTenant = new Tenant(
+                    Guid.NewGuid(),
+                    "Acme Corporation",
+                    "ACME",
+                    100L * 1024 * 1024 * 1024)
+                {
+                    Description = "Global Enterprise Demo Tenant"
+                };
+                await context.Tenants.AddAsync(acmeTenant);
+                await context.SaveChangesAsync();
+            }
+
+            // 2. Seed Demo Department
+            var itDept = await context.Departments.FirstOrDefaultAsync(d => d.TenantId == acmeTenant.Id && d.Code == "IT");
+            if (itDept == null)
+            {
+                itDept = new Department(
+                    Guid.NewGuid(),
+                    acmeTenant.Id,
+                    "Information Technology",
+                    "IT")
+                {
+                    Description = "Core Engineering and IT Infrastructure"
+                };
+                await context.Departments.AddAsync(itDept);
+                await context.SaveChangesAsync();
+            }
+
+            // Roles
+            var sysAdminRole = await context.Roles.FirstOrDefaultAsync(r => r.Name == "SystemAdmin");
+            var tenantAdminRole = await context.Roles.FirstOrDefaultAsync(r => r.Name == "TenantAdmin");
+            var deptAdminRole = await context.Roles.FirstOrDefaultAsync(r => r.Name == "DepartmentAdmin") 
+                                ?? await context.Roles.FirstOrDefaultAsync(r => r.Name == "Manager");
+            var employeeRole = await context.Roles.FirstOrDefaultAsync(r => r.Name == "Employee");
+
+            // 3. Seed System Admin Account
+            var sysAdminEmail = "admin@clouddms.com";
+            var sysAdminUser = await context.Users.FirstOrDefaultAsync(u => u.Email == sysAdminEmail);
+            if (sysAdminUser == null)
+            {
+                var passwordHash = passwordHasher.Hash("Admin@123");
+                sysAdminUser = new User(
+                    tenantId: null,
+                    departmentId: null,
+                    email: sysAdminEmail,
+                    passwordHash: passwordHash,
+                    firstName: "System",
+                    lastName: "Administrator",
+                    phoneNumber: "+84 901 234 567"
+                );
+                await context.Users.AddAsync(sysAdminUser);
+                await context.SaveChangesAsync();
+
+                if (sysAdminRole != null)
+                {
+                    await context.UserRoles.AddAsync(new UserRole(Guid.NewGuid(), sysAdminUser.Id, sysAdminRole.Id));
+                    await context.SaveChangesAsync();
+                }
+            }
+
+            // 4. Seed Tenant Admin Account
+            var tenantAdminEmail = "tenant@acme.com";
+            var tenantAdminUser = await context.Users.FirstOrDefaultAsync(u => u.Email == tenantAdminEmail);
+            if (tenantAdminUser == null)
+            {
+                var passwordHash = passwordHasher.Hash("Tenant@123");
+                tenantAdminUser = new User(
+                    tenantId: acmeTenant.Id,
+                    departmentId: itDept.Id,
+                    email: tenantAdminEmail,
+                    passwordHash: passwordHash,
+                    firstName: "Alice",
+                    lastName: "Manager",
+                    phoneNumber: "+84 988 765 432"
+                );
+                await context.Users.AddAsync(tenantAdminUser);
+                await context.SaveChangesAsync();
+
+                if (tenantAdminRole != null)
+                {
+                    await context.UserRoles.AddAsync(new UserRole(Guid.NewGuid(), tenantAdminUser.Id, tenantAdminRole.Id));
+                    await context.SaveChangesAsync();
+                }
+            }
+
+            // 5. Seed Department Admin Account
+            var deptAdminEmail = "deptadmin@acme.com";
+            var deptAdminUser = await context.Users.FirstOrDefaultAsync(u => u.Email == deptAdminEmail);
+            if (deptAdminUser == null)
+            {
+                var passwordHash = passwordHasher.Hash("DeptAdmin@123");
+                deptAdminUser = new User(
+                    tenantId: acmeTenant.Id,
+                    departmentId: itDept.Id,
+                    email: deptAdminEmail,
+                    passwordHash: passwordHash,
+                    firstName: "David",
+                    lastName: "Department Lead",
+                    phoneNumber: "+84 912 345 678"
+                );
+                await context.Users.AddAsync(deptAdminUser);
+                await context.SaveChangesAsync();
+
+                if (deptAdminRole != null)
+                {
+                    await context.UserRoles.AddAsync(new UserRole(Guid.NewGuid(), deptAdminUser.Id, deptAdminRole.Id));
+                    await context.SaveChangesAsync();
+                }
+            }
+
+            // 6. Seed Employee / User Account
+            var userEmail = "user@acme.com";
+            var normalUser = await context.Users.FirstOrDefaultAsync(u => u.Email == userEmail);
+            if (normalUser == null)
+            {
+                var passwordHash = passwordHasher.Hash("User@123");
+                normalUser = new User(
+                    tenantId: acmeTenant.Id,
+                    departmentId: itDept.Id,
+                    email: userEmail,
+                    passwordHash: passwordHash,
+                    firstName: "Alex",
+                    lastName: "Mercer",
+                    phoneNumber: "+84 914 829 901"
+                );
+                await context.Users.AddAsync(normalUser);
+                await context.SaveChangesAsync();
+
+                if (employeeRole != null)
+                {
+                    await context.UserRoles.AddAsync(new UserRole(Guid.NewGuid(), normalUser.Id, employeeRole.Id));
+                    await context.SaveChangesAsync();
+                }
+            }
+
+            logger.LogInformation("Demo Tenants, Departments, and 4 Role accounts seeded successfully.");
         }
     }
 }
