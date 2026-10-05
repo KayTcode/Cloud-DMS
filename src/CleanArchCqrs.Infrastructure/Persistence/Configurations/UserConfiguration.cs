@@ -37,6 +37,10 @@ public class UserConfiguration : IEntityTypeConfiguration<User>
         builder.Property(u => u.IsActive)
             .IsRequired();
 
+        builder.Property(u => u.EmailConfirmed)
+            .IsRequired()
+            .HasDefaultValue(false);
+
         builder.Property(u => u.LastLoginAt);
 
         builder.HasOne(u => u.Tenant)

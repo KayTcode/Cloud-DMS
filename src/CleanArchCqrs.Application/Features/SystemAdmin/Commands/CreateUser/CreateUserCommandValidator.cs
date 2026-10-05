@@ -12,9 +12,9 @@ public class CreateUserCommandValidator : AbstractValidator<CreateUserCommand>
             .MaximumLength(256).WithMessage("Email must not exceed 256 characters.");
 
         RuleFor(v => v.Password)
-            .NotEmpty().WithMessage("Password is required.")
             .MinimumLength(6).WithMessage("Password must be at least 6 characters long.")
-            .MaximumLength(100).WithMessage("Password must not exceed 100 characters.");
+            .MaximumLength(100).WithMessage("Password must not exceed 100 characters.")
+            .When(v => !string.IsNullOrEmpty(v.Password));
 
         RuleFor(v => v.FirstName)
             .NotEmpty().WithMessage("First name is required.")

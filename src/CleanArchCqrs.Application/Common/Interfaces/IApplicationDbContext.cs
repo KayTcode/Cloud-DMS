@@ -18,6 +18,9 @@ public interface IApplicationDbContext
     DbSet<Folder> Folders { get; }
     DbSet<CleanArchCqrs.Domain.Entities.FileShare> FileShares { get; }
     DbSet<Product> Products { get; }
+    DbSet<EmailVerificationToken> EmailVerificationTokens { get; }
+    DbSet<UserStorageQuota> UserStorageQuotas { get; }
+    DbSet<StorageProvider> StorageProviders { get; }
 
     Task<int> SaveChangesAsync(CancellationToken cancellationToken = default);
 }

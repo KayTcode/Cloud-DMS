@@ -14,6 +14,9 @@ public class Tenant : BaseEntity
     public long StorageUsedBytes { get; set; }
     public bool IsActive { get; set; } = true;
 
+    public Guid? StorageProviderId { get; set; }
+    public StorageProvider? StorageProvider { get; set; }
+
     // Navigation properties
     public ICollection<Department> Departments { get; set; } = new List<Department>();
     public ICollection<User> Users { get; set; } = new List<User>();

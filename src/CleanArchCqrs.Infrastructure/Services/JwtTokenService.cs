@@ -1,4 +1,4 @@
-﻿using CleanArchCqrs.Application.Common.Interfaces;
+using CleanArchCqrs.Application.Common.Interfaces;
 using CleanArchCqrs.Domain.Entities;
 using CleanArchCqrs.Infrastructure.Persistence.Configuations;
 using Microsoft.Extensions.Options;
@@ -26,7 +26,9 @@ namespace CleanArchCqrs.Infrastructure.Services
             var claims = new List<Claim>
             {
                 new(JwtRegisteredClaimNames.Sub, user.Id.ToString()),
-
+                new(ClaimTypes.NameIdentifier, user.Id.ToString()),
+                new("id", user.Id.ToString()),
+                new("userId", user.Id.ToString()),
                 new(JwtRegisteredClaimNames.Email, user.Email),
                 new(ClaimTypes.Email, user.Email),
                 new(ClaimTypes.Role, role)

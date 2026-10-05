@@ -11,11 +11,16 @@ public class CreateUserCommandHandler : IRequestHandler<CreateUserCommand, Resul
 {
     private readonly IApplicationDbContext _context;
     private readonly IPasswordHasher _passwordHasher;
+    private readonly IEmailService _emailService;
 
-    public CreateUserCommandHandler(IApplicationDbContext context, IPasswordHasher passwordHasher)
+    public CreateUserCommandHandler(
+        IApplicationDbContext context,
+        IPasswordHasher passwordHasher,
+        IEmailService emailService)
     {
         _context = context;
         _passwordHasher = passwordHasher;
+        _emailService = emailService;
     }
 
     public async Task<Result<UserDto>> Handle(
@@ -39,31 +44,27 @@ public class CreateUserCommandHandler : IRequestHandler<CreateUserCommand, Resul
 
         if (!string.IsNullOrWhiteSpace(request.TenantName))
         {
-            // Calculate storage quota based on selected plan
-            var planName = request.Plan?.Trim().ToLowerInvariant() ?? "enterprise";
-            var quotaBytes = planName switch
-            {
-                "starter" => 10L * 1024 * 1024 * 1024,       // 10 GB
-                "business" => 50L * 1024 * 1024 * 1024,     // 50 GB
-                _ => 100L * 1024 * 1024 * 1024              // 100 GB (Enterprise)
-            };
-
-            // Generate a clean tenant code from the name
+            // 1. Sinh mã Tenant Code tự động từ tên
             var cleanLetters = new string(request.TenantName.Where(char.IsLetterOrDigit).ToArray()).ToUpperInvariant();
-            var codeCandidate = string.IsNullOrWhiteSpace(cleanLetters) 
-                ? "T_" + Guid.NewGuid().ToString("N")[..6].ToUpper() 
+            var codeCandidate = string.IsNullOrWhiteSpace(cleanLetters)
+                ? "T_" + Guid.NewGuid().ToString("N")[..6].ToUpper()
                 : (cleanLetters.Length > 8 ? cleanLetters[..8] : cleanLetters);
 
-            // Ensure unique code
+            // Kiểm tra trùng lặp mã Tenant Code
             var codeExists = await _context.Tenants.AnyAsync(t => t.Code == codeCandidate, cancellationToken);
             if (codeExists)
             {
                 codeCandidate = $"{codeCandidate[..Math.Min(5, codeCandidate.Length)]}_{Guid.NewGuid().ToString("N")[..4].ToUpper()}";
             }
 
+            // 2. Chưa gán dung lượng (đặt mặc định = 0 bytes)
+            long quotaBytes = 0L;
+
             tenant = new Tenant(Guid.NewGuid(), request.TenantName.Trim(), codeCandidate, quotaBytes)
             {
-                Description = $"{request.Plan ?? "Enterprise"} Subscription Tenant Organization"
+                Description = !string.IsNullOrWhiteSpace(request.Plan)
+                    ? $"{request.Plan} Subscription Tenant Organization"
+                    : "Tenant Organization"
             };
 
             await _context.Tenants.AddAsync(tenant, cancellationToken);
@@ -99,12 +100,16 @@ public class CreateUserCommandHandler : IRequestHandler<CreateUserCommand, Resul
 
         // 3. Create User entity with TenantAdmin role
         var effectiveTenantId = tenant?.Id ?? request.TenantId;
+        // Đúng khi thảo mãn điều kiện có tên tenant mới và để trống mật khẩu 
+        var isInvitation = !string.IsNullOrWhiteSpace(request.TenantName) || string.IsNullOrEmpty(request.Password);
+        // Nếu để trống sinh ra chuỗi ngẫu nhiên 32 ký tự , còn nếu không trống thì dùng luôn 
+        var initialPassword = string.IsNullOrEmpty(request.Password) ? Guid.NewGuid().ToString("N") : request.Password;
 
         var user = new User
         {
             Id = Guid.NewGuid(),
             Email = request.Email.Trim(),
-            PasswordHash = _passwordHasher.HashPassword(request.Password),
+            PasswordHash = _passwordHasher.HashPassword(initialPassword),
             FirstName = request.FirstName.Trim(),
             LastName = request.LastName.Trim(),
             PhoneNumber = string.IsNullOrWhiteSpace(request.PhoneNumber) ? null : request.PhoneNumber.Trim(),
@@ -112,20 +117,48 @@ public class CreateUserCommandHandler : IRequestHandler<CreateUserCommand, Resul
             Tenant = tenant,
             DepartmentId = request.DepartmentId,
             Department = department,
-            IsActive = true
+            IsActive = !isInvitation,
+            EmailConfirmed = !isInvitation
         };
 
-        // 4. Enforce TenantAdmin Role for System Admin tenant creation
+        // Lấy role tenantAdmin 
         var tenantAdminRole = await _context.Roles
             .FirstOrDefaultAsync(r => r.Name == "TenantAdmin", cancellationToken);
 
+        // Gán role 
         if (tenantAdminRole != null)
         {
             user.UserRoles.Add(new UserRole(Guid.NewGuid(), user.Id, tenantAdminRole.Id));
         }
 
         await _context.Users.AddAsync(user, cancellationToken);
-        await _context.SaveChangesAsync(cancellationToken);
+
+        // 5. If invitation, generate token and send activation email
+        if (isInvitation)
+        {
+            var tokenString = Guid.NewGuid().ToString("N") + Guid.NewGuid().ToString("N");
+            var invitationToken = new EmailVerificationToken(
+                id: Guid.NewGuid(),
+                userId: user.Id,
+                token: tokenString,
+                tokenType: "TenantAdminInvitation",
+                expirationHours: 48);
+
+            await _context.EmailVerificationTokens.AddAsync(invitationToken, cancellationToken);
+            await _context.SaveChangesAsync(cancellationToken);
+
+            // Send Email Invitation
+            await _emailService.SendTenantAdminInvitationAsync(
+                toEmail: user.Email,
+                recipientName: user.FullName,
+                tenantName: tenant?.Name ?? "Tổ chức",
+                token: tokenString,
+                cancellationToken: cancellationToken);
+        }
+        else
+        {
+            await _context.SaveChangesAsync(cancellationToken);
+        }
 
         // Fetch back with eager loaded relations for response
         var createdUser = await _context.Users

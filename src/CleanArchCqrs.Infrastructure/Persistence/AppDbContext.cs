@@ -31,6 +31,9 @@ public class AppDbContext : DbContext, IApplicationDbContext
     public DbSet<Folder> Folders => Set<Folder>();
     public DbSet<CleanArchCqrs.Domain.Entities.FileShare> FileShares => Set<CleanArchCqrs.Domain.Entities.FileShare>();
     public DbSet<Product> Products => Set<Product>();
+    public DbSet<EmailVerificationToken> EmailVerificationTokens => Set<EmailVerificationToken>();
+    public DbSet<UserStorageQuota> UserStorageQuotas => Set<UserStorageQuota>();
+    public DbSet<StorageProvider> StorageProviders => Set<StorageProvider>();
 
     public override async Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
     {

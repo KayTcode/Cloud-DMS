@@ -4,20 +4,23 @@ using CleanArchCqrs.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
 
-namespace CleanArchCqrs.Infrastructure.Persistence.Migrations
+namespace CleanArchCqrs.Infrastructure.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20261001093436_AddEmailVerificationTokensAndQuota")]
+    partial class AddEmailVerificationTokensAndQuota
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
-                .HasAnnotation("ProductVersion", "8.0.11")
+                .HasAnnotation("ProductVersion", "8.0.25")
                 .HasAnnotation("Relational:MaxIdentifierLength", 64);
 
             MySqlModelBuilderExtensions.AutoIncrementColumns(modelBuilder);
@@ -37,6 +40,7 @@ namespace CleanArchCqrs.Infrastructure.Persistence.Migrations
                         .HasColumnType("datetime(6)");
 
                     b.Property<string>("Details")
+                        .HasMaxLength(4000)
                         .HasColumnType("longtext");
 
                     b.Property<Guid?>("EntityId")
@@ -74,6 +78,8 @@ namespace CleanArchCqrs.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("EntityName", "EntityId");
 
+                    b.HasIndex("TenantId", "CreatedAt");
+
                     b.ToTable("AuditLogs", (string)null);
                 });
 
@@ -92,7 +98,8 @@ namespace CleanArchCqrs.Infrastructure.Persistence.Migrations
                         .HasColumnType("datetime(6)");
 
                     b.Property<string>("Description")
-                        .HasColumnType("longtext");
+                        .HasMaxLength(500)
+                        .HasColumnType("varchar(500)");
 
                     b.Property<bool>("IsActive")
                         .HasColumnType("tinyint(1)");
@@ -114,6 +121,52 @@ namespace CleanArchCqrs.Infrastructure.Persistence.Migrations
                         .IsUnique();
 
                     b.ToTable("Departments", (string)null);
+                });
+
+            modelBuilder.Entity("CleanArchCqrs.Domain.Entities.EmailVerificationToken", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("char(36)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<DateTime>("ExpiresAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<bool>("IsUsed")
+                        .HasColumnType("tinyint(1)");
+
+                    b.Property<string>("Token")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("varchar(256)");
+
+                    b.Property<string>("TokenType")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("varchar(50)");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<DateTime?>("UsedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("char(36)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Token")
+                        .IsUnique();
+
+                    b.HasIndex("UserId");
+
+                    b.HasIndex("Token", "IsUsed");
+
+                    b.ToTable("EmailVerificationTokens", (string)null);
                 });
 
             modelBuilder.Entity("CleanArchCqrs.Domain.Entities.FileEntry", b =>
@@ -385,6 +438,9 @@ namespace CleanArchCqrs.Infrastructure.Persistence.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("Name")
+                        .IsUnique();
+
                     b.HasIndex("TenantId", "Name")
                         .IsUnique();
 
@@ -478,6 +534,9 @@ namespace CleanArchCqrs.Infrastructure.Persistence.Migrations
                         .IsRequired()
                         .HasMaxLength(256)
                         .HasColumnType("varchar(256)");
+
+                    b.Property<bool>("EmailConfirmed")
+                        .HasColumnType("tinyint(1)");
 
                     b.Property<string>("FirstName")
                         .IsRequired()
@@ -605,6 +664,17 @@ namespace CleanArchCqrs.Infrastructure.Persistence.Migrations
                         .IsRequired();
 
                     b.Navigation("Tenant");
+                });
+
+            modelBuilder.Entity("CleanArchCqrs.Domain.Entities.EmailVerificationToken", b =>
+                {
+                    b.HasOne("CleanArchCqrs.Domain.Entities.User", "User")
+                        .WithMany("EmailVerificationTokens")
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("User");
                 });
 
             modelBuilder.Entity("CleanArchCqrs.Domain.Entities.FileEntry", b =>
@@ -798,6 +868,8 @@ namespace CleanArchCqrs.Infrastructure.Persistence.Migrations
             modelBuilder.Entity("CleanArchCqrs.Domain.Entities.User", b =>
                 {
                     b.Navigation("AuditLogs");
+
+                    b.Navigation("EmailVerificationTokens");
 
                     b.Navigation("Files");
 

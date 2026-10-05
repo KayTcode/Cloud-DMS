@@ -17,6 +17,7 @@ public class User : BaseEntity
     public string LastName { get; set; } = string.Empty;
     public string? PhoneNumber { get; set; }
     public bool IsActive { get; set; } = true;
+    public bool EmailConfirmed { get; set; } = false;
     public DateTime? LastLoginAt { get; set; }
 
     public string FullName => $"{FirstName} {LastName}".Trim();
@@ -25,6 +26,7 @@ public class User : BaseEntity
     public ICollection<FileEntry> Files { get; set; } = new List<FileEntry>();
     public ICollection<RefreshToken> RefreshTokens { get; set; } = new List<RefreshToken>();
     public ICollection<AuditLog> AuditLogs { get; set; } = new List<AuditLog>();
+    public ICollection<EmailVerificationToken> EmailVerificationTokens { get; set; } = new List<EmailVerificationToken>();
 
     public User() { }
 

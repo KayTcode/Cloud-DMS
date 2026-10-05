@@ -77,6 +77,7 @@ public class Program
 
             // Prevent schema ID collisions across namespaces
             c.CustomSchemaIds(type => type.FullName?.Replace("+", "."));
+            c.ResolveConflictingActions(apiDescriptions => apiDescriptions.First());
 
             // Add JWT Bearer Auth definition to Swagger
             c.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
@@ -105,6 +106,8 @@ public class Program
         });
 
         // Register application and infrastructure services
+        builder.Services.AddHttpContextAccessor();
+        builder.Services.AddScoped<CleanArchCqrs.Application.Common.Interfaces.ICurrentUserService, CleanArchCqrs.API.Services.CurrentUserService>();
         builder.Services.AddInfrastructureServices(builder.Configuration);
         builder.Services.AddApplicationServices();
 
@@ -123,6 +126,119 @@ public class Program
                 catch (Exception mex)
                 {
                     logger.LogWarning(mex, "Database migration skipped or tables already exist.");
+                }
+
+                // Ensure newly added columns & tables exist in MySQL
+                try
+                {
+                    await context.Database.ExecuteSqlRawAsync(
+                        "ALTER TABLE `Users` ADD COLUMN `EmailConfirmed` tinyint(1) NOT NULL DEFAULT 0;");
+                    logger.LogInformation("Added missing column EmailConfirmed to Users table.");
+                }
+                catch
+                {
+                    // Column already exists, ignore
+                }
+
+                try
+                {
+                    // Ensure existing demo users are confirmed so login succeeds
+                    await context.Database.ExecuteSqlRawAsync(
+                        "UPDATE `Users` SET `EmailConfirmed` = 1 WHERE `EmailConfirmed` = 0;");
+                }
+                catch
+                {
+                    // Ignore
+                }
+
+                try
+                {
+                    await context.Database.ExecuteSqlRawAsync(@"
+                        CREATE TABLE IF NOT EXISTS `EmailVerificationTokens` (
+                            `Id` char(36) COLLATE ascii_general_ci NOT NULL,
+                            `UserId` char(36) COLLATE ascii_general_ci NOT NULL,
+                            `Token` varchar(256) CHARACTER SET utf8mb4 NOT NULL,
+                            `TokenType` varchar(50) CHARACTER SET utf8mb4 NOT NULL,
+                            `ExpiresAt` datetime(6) NOT NULL,
+                            `IsUsed` tinyint(1) NOT NULL,
+                            `UsedAt` datetime(6) NULL,
+                            `CreatedAt` datetime(6) NOT NULL,
+                            `UpdatedAt` datetime(6) NULL,
+                            PRIMARY KEY (`Id`),
+                            KEY `IX_EmailVerificationTokens_UserId` (`UserId`),
+                            KEY `IX_EmailVerificationTokens_Token` (`Token`),
+                            KEY `IX_EmailVerificationTokens_Token_IsUsed` (`Token`, `IsUsed`),
+                            CONSTRAINT `FK_EmailVerificationTokens_Users_UserId` FOREIGN KEY (`UserId`) REFERENCES `Users` (`Id`) ON DELETE CASCADE
+                        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;");
+                }
+                catch (Exception exTokens)
+                {
+                    logger.LogWarning(exTokens, "Creation of EmailVerificationTokens table skipped.");
+                }
+
+                try
+                {
+                    await context.Database.ExecuteSqlRawAsync(@"
+                        CREATE TABLE IF NOT EXISTS `UserStorageQuotas` (
+                            `Id` char(36) COLLATE ascii_general_ci NOT NULL,
+                            `UserId` char(36) COLLATE ascii_general_ci NOT NULL,
+                            `QuotaBytes` bigint NOT NULL,
+                            `UsedBytes` bigint NOT NULL,
+                            `CreatedAt` datetime(6) NOT NULL,
+                            `UpdatedAt` datetime(6) NULL,
+                            PRIMARY KEY (`Id`),
+                            UNIQUE KEY `IX_UserStorageQuotas_UserId` (`UserId`),
+                            CONSTRAINT `FK_UserStorageQuotas_Users_UserId` FOREIGN KEY (`UserId`) REFERENCES `Users` (`Id`) ON DELETE CASCADE
+                        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;");
+                }
+                catch (Exception exQuotas)
+                {
+                    logger.LogWarning(exQuotas, "Creation of UserStorageQuotas table skipped.");
+                }
+
+                try
+                {
+                    await context.Database.ExecuteSqlRawAsync(@"
+                        CREATE TABLE IF NOT EXISTS `StorageProviders` (
+                            `Id` char(36) COLLATE ascii_general_ci NOT NULL,
+                            `Name` varchar(200) CHARACTER SET utf8mb4 NOT NULL,
+                            `Type` int NOT NULL,
+                            `ConfigEncrypted` longtext CHARACTER SET utf8mb4 NOT NULL,
+                            `TotalCapacityBytes` bigint NOT NULL,
+                            `UsedCapacityBytes` bigint NOT NULL,
+                            `RootFolderId` varchar(255) CHARACTER SET utf8mb4 NULL,
+                            `IsActive` tinyint(1) NOT NULL DEFAULT 1,
+                            `Status` varchar(50) CHARACTER SET utf8mb4 NOT NULL DEFAULT 'Connected',
+                            `LastSyncAt` datetime(6) NULL,
+                            `CreatedAt` datetime(6) NOT NULL,
+                            `UpdatedAt` datetime(6) NULL,
+                            PRIMARY KEY (`Id`)
+                        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;");
+
+                    try
+                    {
+                        await context.Database.ExecuteSqlRawAsync(@"
+                            ALTER TABLE `Tenants` ADD COLUMN `StorageProviderId` char(36) COLLATE ascii_general_ci NULL;");
+                    }
+                    catch { /* column already exists */ }
+
+                    try
+                    {
+                        await context.Database.ExecuteSqlRawAsync(@"
+                            ALTER TABLE `FileEntries` ADD COLUMN `StorageProviderId` char(36) COLLATE ascii_general_ci NULL;");
+                    }
+                    catch { /* column already exists */ }
+
+                    try
+                    {
+                        await context.Database.ExecuteSqlRawAsync(@"
+                            ALTER TABLE `FileEntries` ADD COLUMN `ScanStatus` varchar(50) NOT NULL DEFAULT 'Clean';");
+                    }
+                    catch { /* column already exists */ }
+                }
+                catch (Exception exProviders)
+                {
+                    logger.LogWarning(exProviders, "Creation of StorageProviders table skipped.");
                 }
 
                 var passwordHasher = services.GetRequiredService<CleanArchCqrs.Application.Common.Interfaces.IPasswordHasher>();

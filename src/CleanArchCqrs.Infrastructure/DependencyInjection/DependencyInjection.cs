@@ -1,4 +1,4 @@
-﻿using CleanArchCqrs.Application.Common.Interfaces;
+using CleanArchCqrs.Application.Common.Interfaces;
 using CleanArchCqrs.Application.Common.Interfaces.Repositorires;
 using CleanArchCqrs.Infrastructure.Persistence;
 using CleanArchCqrs.Infrastructure.Persistence.Configuations;
@@ -30,8 +30,14 @@ namespace CleanArchCqrs.Infrastructure.DependencyInjection
             services.Configure<JwtOptions>(configuration.GetSection(JwtOptions.SectionName));
 
             services.AddScoped<IJwtTokenService, JwtTokenService>();
+            services.AddScoped<IEmailService, EmailService>();
             services.AddScoped<IUserRepository, UserRepository>();
             services.AddScoped<IUserAuthorizationRepository, UserAuthorizationRepository>();
+
+            // Storage & Security
+            services.AddSingleton<IAesEncryptionService, AesEncryptionService>();
+            services.AddScoped<IStorageServiceFactory, CleanArchCqrs.Infrastructure.Services.Storage.StorageServiceFactory>();
+            services.AddScoped<IVirusScannerService, ClamAvVirusScannerService>();
 
             // Database
             var connectionString =

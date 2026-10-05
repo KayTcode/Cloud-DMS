@@ -20,7 +20,12 @@ public class FileEntry : BaseEntity
 
     public string? Hash { get; set; }
 
+    public string ScanStatus { get; set; } = "Clean";
+
     public bool IsDeleted { get; set; }
+
+    public Guid? StorageProviderId { get; set; }
+    public StorageProvider? StorageProvider { get; set; }
 
     public Tenant Tenant { get; set; } = null!;
 
