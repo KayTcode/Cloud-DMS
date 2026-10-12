@@ -1,9 +1,12 @@
 using CleanArchCqrs.Application.Common.Models;
 using CleanArchCqrs.Application.Features.Files.Commands.DeleteFile;
+using CleanArchCqrs.Application.Features.Files.Commands.PermanentDeleteFile;
+using CleanArchCqrs.Application.Features.Files.Commands.RestoreFile;
 using CleanArchCqrs.Application.Features.Files.Commands.UploadFile;
 using CleanArchCqrs.Application.Features.Files.DTOs;
 using CleanArchCqrs.Application.Features.Files.Queries.DownloadFile;
 using CleanArchCqrs.Application.Features.Files.Queries.GetTenantFiles;
+using CleanArchCqrs.Application.Features.Files.Queries.GetTrashFiles;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
@@ -149,7 +152,7 @@ public class FilesController : ApiControllerBase
     }
 
     /// <summary>
-    /// Deletes file from Cloud Storage and releases quota back to Tenant and User.
+    /// Chuyển tệp tin vào thùng rác (Soft Delete). Chưa xóa vật lý trên Cloud và chưa giải phóng Quota.
     /// </summary>
     [Authorize(Policy = "file.delete")]
     [HttpDelete("{id:guid}")]
@@ -157,6 +160,57 @@ public class FilesController : ApiControllerBase
     public async Task<ActionResult> DeleteFile([FromRoute] Guid id)
     {
         var command = new DeleteFileCommand(id);
+        var result = await Sender.Send(command);
+        return HandleResult(result);
+    }
+
+    /// <summary>
+    /// Lấy danh sách tệp tin trong thùng rác (Recycle Bin) có phân quyền theo Role.
+    /// </summary>
+    [Authorize(Policy = "file.read")]
+    [HttpGet("trash")]
+    [ProducesResponseType(typeof(Result<TrashFileListDto>), StatusCodes.Status200OK)]
+    public async Task<ActionResult> GetTrashFiles(
+        [FromQuery] Guid? tenantId,
+        [FromQuery] Guid? departmentId,
+        [FromQuery] int pageNumber = 1,
+        [FromQuery] int pageSize = 20,
+        [FromQuery] string? searchTerm = null)
+    {
+        var query = new GetTrashFilesQuery
+        {
+            TenantId = tenantId,
+            DepartmentId = departmentId,
+            PageNumber = pageNumber,
+            PageSize = pageSize,
+            SearchTerm = searchTerm
+        };
+        var result = await Sender.Send(query);
+        return HandleResult(result);
+    }
+
+    /// <summary>
+    /// Khôi phục tệp tin từ thùng rác trở lại danh sách hoạt động.
+    /// </summary>
+    [Authorize(Policy = "file.upload")]
+    [HttpPost("{id:guid}/restore")]
+    [ProducesResponseType(typeof(Result<bool>), StatusCodes.Status200OK)]
+    public async Task<ActionResult> RestoreFile([FromRoute] Guid id)
+    {
+        var command = new RestoreFileCommand(id);
+        var result = await Sender.Send(command);
+        return HandleResult(result);
+    }
+
+    /// <summary>
+    /// Xóa vĩnh viễn tệp tin khỏi Cloud Storage và giải phóng Quota.
+    /// </summary>
+    [Authorize(Policy = "file.delete")]
+    [HttpDelete("{id:guid}/permanent")]
+    [ProducesResponseType(typeof(Result<bool>), StatusCodes.Status200OK)]
+    public async Task<ActionResult> PermanentDeleteFile([FromRoute] Guid id)
+    {
+        var command = new PermanentDeleteFileCommand(id);
         var result = await Sender.Send(command);
         return HandleResult(result);
     }

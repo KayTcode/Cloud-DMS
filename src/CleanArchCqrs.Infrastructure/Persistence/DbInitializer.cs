@@ -353,6 +353,7 @@ namespace CleanArchCqrs.Infrastructure.Persistence
                 await context.SaveChangesAsync();
             }
 
+            // Roles
             var sysAdminRole = await context.Roles.FirstOrDefaultAsync(r => r.Name == "SystemAdmin");
             var tenantAdminRole = await context.Roles.FirstOrDefaultAsync(r => r.Name == "TenantAdmin");
 

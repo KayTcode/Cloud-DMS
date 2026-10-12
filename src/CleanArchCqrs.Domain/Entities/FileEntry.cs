@@ -28,6 +28,9 @@ public class FileEntry : BaseEntity
     public string ScanStatus { get; set; } = "Clean";
 
     public bool IsDeleted { get; set; }
+    public DateTime? DeletedAt { get; set; }
+    public Guid? DeletedByUserId { get; set; }
+    public User? DeletedByUser { get; set; }
 
     public FileLifecycle Lifecycle { get; set; } = FileLifecycle.Active;
 
