@@ -15,17 +15,26 @@ namespace CleanArchCqrs.Infrastructure.Persistence
         public static async Task SeedDefaultDataAsync(
             AppDbContext context,
             IPasswordHasher passwordHasher,
-            ILogger logger)
+            ILogger logger,
+            bool isDevelopment = false)
         {
             try
             {
                 await SeedPermissionsAsync(context, logger);
                 await SeedRolesAsync(context, logger);
                 await SeedRolePermissionsAsync(context, logger);
-                await SeedTenantsAndUsersAsync(context, passwordHasher, logger);
 
-                logger.LogInformation(
-                    "Default RBAC data & demo accounts seeded successfully.");
+                if (isDevelopment)
+                {
+                    await SeedTenantsAndUsersAsync(context, passwordHasher, logger);
+                    logger.LogInformation(
+                        "Default RBAC data & demo accounts seeded successfully (Development mode).");
+                }
+                else
+                {
+                    logger.LogInformation(
+                        "Default RBAC data seeded successfully (Production mode - demo accounts skipped).");
+                }
             }
             catch (Exception ex)
             {
@@ -306,6 +315,22 @@ namespace CleanArchCqrs.Infrastructure.Persistence
             IPasswordHasher passwordHasher,
             ILogger logger)
         {
+            // 0. Seed Default Storage Provider if none exists
+            var defaultProvider = await context.StorageProviders.FirstOrDefaultAsync(p => p.Type == StorageProviderType.Local);
+            if (defaultProvider == null)
+            {
+                defaultProvider = new StorageProvider(
+                    name: "Default Local Storage",
+                    type: StorageProviderType.Local,
+                    configEncrypted: "{}",
+                    totalCapacityBytes: 500L * 1024 * 1024 * 1024, // 500 GB
+                    usedCapacityBytes: 0L,
+                    rootFolderId: "App_Data/Storage");
+
+                await context.StorageProviders.AddAsync(defaultProvider);
+                await context.SaveChangesAsync();
+            }
+
             // 1. Seed Demo Tenant if none exists
             var acmeTenant = await context.Tenants.FirstOrDefaultAsync(t => t.Code == "ACME");
             if (acmeTenant == null)
@@ -316,9 +341,15 @@ namespace CleanArchCqrs.Infrastructure.Persistence
                     "ACME",
                     100L * 1024 * 1024 * 1024)
                 {
-                    Description = "Global Enterprise Demo Tenant"
+                    Description = "Global Enterprise Demo Tenant",
+                    StorageProviderId = defaultProvider.Id
                 };
                 await context.Tenants.AddAsync(acmeTenant);
+                await context.SaveChangesAsync();
+            }
+            else if (!acmeTenant.StorageProviderId.HasValue)
+            {
+                acmeTenant.StorageProviderId = defaultProvider.Id;
                 await context.SaveChangesAsync();
             }
 
@@ -330,11 +361,17 @@ namespace CleanArchCqrs.Infrastructure.Persistence
                     Guid.NewGuid(),
                     acmeTenant.Id,
                     "Information Technology",
-                    "IT")
+                    "IT",
+                    50L * 1024 * 1024 * 1024) // 50 GB
                 {
                     Description = "Core Engineering and IT Infrastructure"
                 };
                 await context.Departments.AddAsync(itDept);
+                await context.SaveChangesAsync();
+            }
+            else if (itDept.StorageQuotaBytes <= 0)
+            {
+                itDept.StorageQuotaBytes = 50L * 1024 * 1024 * 1024;
                 await context.SaveChangesAsync();
             }
 
@@ -395,6 +432,20 @@ namespace CleanArchCqrs.Infrastructure.Persistence
                 }
             }
 
+            // Ensure Tenant Admin has UserStorageQuota
+            var tenantAdminQuota = await context.UserStorageQuotas.FirstOrDefaultAsync(q => q.UserId == tenantAdminUser.Id);
+            if (tenantAdminQuota == null)
+            {
+                await context.UserStorageQuotas.AddAsync(new UserStorageQuota
+                {
+                    Id = Guid.NewGuid(),
+                    UserId = tenantAdminUser.Id,
+                    QuotaBytes = 0L,
+                    UsedBytes = 0L
+                });
+                await context.SaveChangesAsync();
+            }
+
             // 5. Seed Department Admin Account
             var deptAdminEmail = "deptadmin@acme.com";
             var deptAdminUser = await context.Users.FirstOrDefaultAsync(u => u.Email == deptAdminEmail);
@@ -418,6 +469,20 @@ namespace CleanArchCqrs.Infrastructure.Persistence
                     await context.UserRoles.AddAsync(new UserRole(Guid.NewGuid(), deptAdminUser.Id, deptAdminRole.Id));
                     await context.SaveChangesAsync();
                 }
+            }
+
+            // Ensure Department Admin has UserStorageQuota (15 GB)
+            var deptAdminQuota = await context.UserStorageQuotas.FirstOrDefaultAsync(q => q.UserId == deptAdminUser.Id);
+            if (deptAdminQuota == null)
+            {
+                await context.UserStorageQuotas.AddAsync(new UserStorageQuota
+                {
+                    Id = Guid.NewGuid(),
+                    UserId = deptAdminUser.Id,
+                    QuotaBytes = 15L * 1024 * 1024 * 1024,
+                    UsedBytes = 0L
+                });
+                await context.SaveChangesAsync();
             }
 
             // 6. Seed Employee / User Account
@@ -445,7 +510,21 @@ namespace CleanArchCqrs.Infrastructure.Persistence
                 }
             }
 
-            logger.LogInformation("Demo Tenants, Departments, and 4 Role accounts seeded successfully.");
+            // Ensure Employee has UserStorageQuota (10 GB)
+            var normalUserQuota = await context.UserStorageQuotas.FirstOrDefaultAsync(q => q.UserId == normalUser.Id);
+            if (normalUserQuota == null)
+            {
+                await context.UserStorageQuotas.AddAsync(new UserStorageQuota
+                {
+                    Id = Guid.NewGuid(),
+                    UserId = normalUser.Id,
+                    QuotaBytes = 10L * 1024 * 1024 * 1024,
+                    UsedBytes = 0L
+                });
+                await context.SaveChangesAsync();
+            }
+
+            logger.LogInformation("Demo StorageProvider, Tenants, Departments, Quotas, and 4 Role accounts seeded successfully.");
         }
     }
 }

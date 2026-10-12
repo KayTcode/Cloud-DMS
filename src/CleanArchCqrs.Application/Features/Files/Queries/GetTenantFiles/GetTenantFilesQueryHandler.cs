@@ -21,16 +21,31 @@ public class GetTenantFilesQueryHandler : IRequestHandler<GetTenantFilesQuery, R
 
     public async Task<Result<TenantStorageSummaryDto>> Handle(GetTenantFilesQuery request, CancellationToken cancellationToken)
     {
-        var tenantId = request.TenantId ?? _currentUserService.TenantId;
+        var isSystemAdmin = _currentUserService.Role == "SystemAdmin";
+        Guid? tenantId;
 
-        if (!tenantId.HasValue)
+        if (isSystemAdmin)
         {
-            // Thử lấy TenantId của user hiện tại
-            var userId = _currentUserService.UserId;
-            if (userId.HasValue)
+            if (request.TenantId.HasValue)
             {
-                var user = await _context.Users.FirstOrDefaultAsync(u => u.Id == userId.Value, cancellationToken);
-                tenantId = user?.TenantId;
+                tenantId = request.TenantId.Value;
+            }
+            else
+            {
+                return Result<TenantStorageSummaryDto>.Failure("Vui lòng chỉ định Tổ chức (Tenant) để xem danh sách tệp tin.");
+            }
+        }
+        else
+        {
+            tenantId = _currentUserService.TenantId;
+            if (!tenantId.HasValue)
+            {
+                var userId = _currentUserService.UserId;
+                if (userId.HasValue)
+                {
+                    var user = await _context.Users.FirstOrDefaultAsync(u => u.Id == userId.Value, cancellationToken);
+                    tenantId = user?.TenantId;
+                }
             }
         }
 
@@ -53,13 +68,32 @@ public class GetTenantFilesQueryHandler : IRequestHandler<GetTenantFilesQuery, R
             .Include(f => f.StorageProvider)
             .Where(f => f.TenantId == tenant.Id && !f.IsDeleted);
 
+        // Với Employee: giới hạn chỉ thấy file thuộc phòng ban của mình
+        if (_currentUserService.Role == "Employee" && _currentUserService.DepartmentId.HasValue)
+        {
+            query = query.Where(f => f.DepartmentId == _currentUserService.DepartmentId.Value);
+        }
+
         if (request.FolderId.HasValue)
         {
             query = query.Where(f => f.FolderId == request.FolderId.Value);
         }
 
+        // Tìm kiếm sargable theo tên file
+        if (!string.IsNullOrWhiteSpace(request.SearchTerm))
+        {
+            var pattern = $"%{request.SearchTerm.Trim()}%";
+            query = query.Where(f => EF.Functions.Like(f.Name, pattern));
+        }
+
+        var totalCount = await query.CountAsync(cancellationToken);
+        var pageNumber = request.PageNumber <= 0 ? 1 : request.PageNumber;
+        var pageSize = Math.Clamp(request.PageSize <= 0 ? 20 : request.PageSize, 1, 100);
+
         var files = await query
             .OrderByDescending(f => f.CreatedAt)
+            .Skip((pageNumber - 1) * pageSize)
+            .Take(pageSize)
             .Select(f => new FileEntryDto(
                 f.Id,
                 f.TenantId,
@@ -75,7 +109,9 @@ public class GetTenantFilesQueryHandler : IRequestHandler<GetTenantFilesQuery, R
                 f.StorageProviderId,
                 f.StorageProvider != null ? f.StorageProvider.Name : null,
                 f.StorageProvider != null ? f.StorageProvider.Type.ToString() : null,
-                f.CreatedAt
+                f.CreatedAt,
+                f.DepartmentId,
+                f.Department != null ? f.Department.Name : null
             ))
             .ToListAsync(cancellationToken);
 
@@ -94,7 +130,10 @@ public class GetTenantFilesQueryHandler : IRequestHandler<GetTenantFilesQuery, R
             tenant.StorageProviderId,
             tenant.StorageProvider?.Name,
             tenant.StorageProvider?.Type.ToString(),
-            files
+            files,
+            totalCount,
+            pageNumber,
+            pageSize
         );
 
         return Result<TenantStorageSummaryDto>.Success(summary);

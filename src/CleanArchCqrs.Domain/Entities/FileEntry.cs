@@ -5,6 +5,8 @@ namespace CleanArchCqrs.Domain.Entities;
 public class FileEntry : BaseEntity
 {
     public Guid TenantId { get; set; }
+    public Guid? DepartmentId { get; set; }
+    public Department? Department { get; set; }
 
     public Guid OwnerId { get; set; }
 

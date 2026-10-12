@@ -21,13 +21,34 @@ public class LocalStorageService : IStorageService
             ? _basePath 
             : Path.Combine(_basePath, parentFolderId);
 
+        var fullTargetDir = Path.GetFullPath(targetDir);
+        var fullBasePath = Path.GetFullPath(_basePath);
+        if (!fullTargetDir.StartsWith(fullBasePath, StringComparison.OrdinalIgnoreCase))
+        {
+            throw new InvalidOperationException("Đường dẫn lưu trữ thư mục không hợp lệ.");
+        }
+
         if (!Directory.Exists(targetDir))
         {
             Directory.CreateDirectory(targetDir);
         }
 
-        var uniqueFileName = $"{Guid.NewGuid()}_{fileName}";
+        // Chống Path Traversal: Chỉ lấy tên file thuần và loại bỏ ký tự không hợp lệ
+        var safeName = Path.GetFileName(fileName);
+        safeName = string.Join("_", safeName.Split(Path.GetInvalidFileNameChars()));
+        if (string.IsNullOrWhiteSpace(safeName))
+        {
+            safeName = "unnamed_file";
+        }
+
+        var uniqueFileName = $"{Guid.NewGuid()}_{safeName}";
         var filePath = Path.Combine(targetDir, uniqueFileName);
+
+        var fullFilePath = Path.GetFullPath(filePath);
+        if (!fullFilePath.StartsWith(fullBasePath, StringComparison.OrdinalIgnoreCase))
+        {
+            throw new InvalidOperationException("Đường dẫn tệp tin không hợp lệ.");
+        }
 
         using var fileStream = new FileStream(filePath, FileMode.Create, FileAccess.Write, FileShare.None, 4096, true);
         await stream.CopyToAsync(fileStream, cancellationToken);
@@ -38,6 +59,13 @@ public class LocalStorageService : IStorageService
     public Task<Stream> DownloadFileAsync(string storageKey, CancellationToken cancellationToken = default)
     {
         var filePath = Path.Combine(_basePath, storageKey);
+        var fullFilePath = Path.GetFullPath(filePath);
+        var fullBasePath = Path.GetFullPath(_basePath);
+        if (!fullFilePath.StartsWith(fullBasePath, StringComparison.OrdinalIgnoreCase))
+        {
+            throw new InvalidOperationException("Đường dẫn tệp tin không hợp lệ.");
+        }
+
         if (!File.Exists(filePath))
         {
             throw new FileNotFoundException("Local file not found", filePath);
@@ -50,6 +78,13 @@ public class LocalStorageService : IStorageService
     public Task<bool> DeleteFileAsync(string storageKey, CancellationToken cancellationToken = default)
     {
         var filePath = Path.Combine(_basePath, storageKey);
+        var fullFilePath = Path.GetFullPath(filePath);
+        var fullBasePath = Path.GetFullPath(_basePath);
+        if (!fullFilePath.StartsWith(fullBasePath, StringComparison.OrdinalIgnoreCase))
+        {
+            throw new InvalidOperationException("Đường dẫn tệp tin không hợp lệ.");
+        }
+
         if (File.Exists(filePath))
         {
             File.Delete(filePath);

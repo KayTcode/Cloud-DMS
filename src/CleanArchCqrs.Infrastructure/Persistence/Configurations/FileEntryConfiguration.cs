@@ -48,9 +48,16 @@ public class FileEntryConfiguration : IEntityTypeConfiguration<FileEntry>
             .HasForeignKey(f => f.FolderId)
             .OnDelete(DeleteBehavior.Restrict);
 
+        builder.HasOne(f => f.Department)
+            .WithMany(d => d.Files)
+            .HasForeignKey(f => f.DepartmentId)
+            .OnDelete(DeleteBehavior.Restrict);
+
         builder.HasIndex(f => f.TenantId);
+        builder.HasIndex(f => f.DepartmentId);
         builder.HasIndex(f => f.OwnerId);
         builder.HasIndex(f => f.FolderId);
+        builder.HasIndex(f => new { f.TenantId, f.IsDeleted, f.CreatedAt });
         builder.HasIndex(f => f.StorageKey)
             .IsUnique();
     }

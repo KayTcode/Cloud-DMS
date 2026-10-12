@@ -37,7 +37,6 @@ namespace CleanArchCqrs.Infrastructure.Persistence.Migrations
                         .HasColumnType("datetime(6)");
 
                     b.Property<string>("Details")
-                        .HasMaxLength(4000)
                         .HasColumnType("longtext");
 
                     b.Property<Guid?>("EntityId")
@@ -75,8 +74,6 @@ namespace CleanArchCqrs.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("EntityName", "EntityId");
 
-                    b.HasIndex("TenantId", "CreatedAt");
-
                     b.ToTable("AuditLogs", (string)null);
                 });
 
@@ -95,8 +92,7 @@ namespace CleanArchCqrs.Infrastructure.Persistence.Migrations
                         .HasColumnType("datetime(6)");
 
                     b.Property<string>("Description")
-                        .HasMaxLength(500)
-                        .HasColumnType("varchar(500)");
+                        .HasColumnType("longtext");
 
                     b.Property<bool>("IsActive")
                         .HasColumnType("tinyint(1)");
@@ -105,6 +101,12 @@ namespace CleanArchCqrs.Infrastructure.Persistence.Migrations
                         .IsRequired()
                         .HasMaxLength(200)
                         .HasColumnType("varchar(200)");
+
+                    b.Property<long>("StorageQuotaBytes")
+                        .HasColumnType("bigint");
+
+                    b.Property<long>("StorageUsedBytes")
+                        .HasColumnType("bigint");
 
                     b.Property<Guid>("TenantId")
                         .HasColumnType("char(36)");
@@ -180,6 +182,9 @@ namespace CleanArchCqrs.Infrastructure.Persistence.Migrations
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("datetime(6)");
 
+                    b.Property<Guid?>("DepartmentId")
+                        .HasColumnType("char(36)");
+
                     b.Property<Guid?>("FolderId")
                         .HasColumnType("char(36)");
 
@@ -197,6 +202,10 @@ namespace CleanArchCqrs.Infrastructure.Persistence.Migrations
 
                     b.Property<Guid>("OwnerId")
                         .HasColumnType("char(36)");
+
+                    b.Property<string>("ScanStatus")
+                        .IsRequired()
+                        .HasColumnType("longtext");
 
                     b.Property<long>("SizeBytes")
                         .HasColumnType("bigint");
@@ -216,6 +225,8 @@ namespace CleanArchCqrs.Infrastructure.Persistence.Migrations
                         .HasColumnType("datetime(6)");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("DepartmentId");
 
                     b.HasIndex("FolderId");
 
@@ -282,6 +293,9 @@ namespace CleanArchCqrs.Infrastructure.Persistence.Migrations
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("datetime(6)");
 
+                    b.Property<Guid?>("DepartmentId")
+                        .HasColumnType("char(36)");
+
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasMaxLength(255)
@@ -297,6 +311,8 @@ namespace CleanArchCqrs.Infrastructure.Persistence.Migrations
                         .HasColumnType("datetime(6)");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("DepartmentId");
 
                     b.HasIndex("ParentFolderId");
 
@@ -439,9 +455,6 @@ namespace CleanArchCqrs.Infrastructure.Persistence.Migrations
                         .HasColumnType("datetime(6)");
 
                     b.HasKey("Id");
-
-                    b.HasIndex("Name")
-                        .IsUnique();
 
                     b.HasIndex("TenantId", "Name")
                         .IsUnique();
@@ -740,6 +753,11 @@ namespace CleanArchCqrs.Infrastructure.Persistence.Migrations
 
             modelBuilder.Entity("CleanArchCqrs.Domain.Entities.FileEntry", b =>
                 {
+                    b.HasOne("CleanArchCqrs.Domain.Entities.Department", "Department")
+                        .WithMany("Files")
+                        .HasForeignKey("DepartmentId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
                     b.HasOne("CleanArchCqrs.Domain.Entities.Folder", "Folder")
                         .WithMany("Files")
                         .HasForeignKey("FolderId")
@@ -761,6 +779,8 @@ namespace CleanArchCqrs.Infrastructure.Persistence.Migrations
                         .HasForeignKey("TenantId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
+
+                    b.Navigation("Department");
 
                     b.Navigation("Folder");
 
@@ -792,6 +812,11 @@ namespace CleanArchCqrs.Infrastructure.Persistence.Migrations
 
             modelBuilder.Entity("CleanArchCqrs.Domain.Entities.Folder", b =>
                 {
+                    b.HasOne("CleanArchCqrs.Domain.Entities.Department", "Department")
+                        .WithMany("Folders")
+                        .HasForeignKey("DepartmentId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
                     b.HasOne("CleanArchCqrs.Domain.Entities.Folder", "ParentFolder")
                         .WithMany("Children")
                         .HasForeignKey("ParentFolderId")
@@ -802,6 +827,8 @@ namespace CleanArchCqrs.Infrastructure.Persistence.Migrations
                         .HasForeignKey("TenantId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
+
+                    b.Navigation("Department");
 
                     b.Navigation("ParentFolder");
 
@@ -907,6 +934,10 @@ namespace CleanArchCqrs.Infrastructure.Persistence.Migrations
 
             modelBuilder.Entity("CleanArchCqrs.Domain.Entities.Department", b =>
                 {
+                    b.Navigation("Files");
+
+                    b.Navigation("Folders");
+
                     b.Navigation("Users");
                 });
 

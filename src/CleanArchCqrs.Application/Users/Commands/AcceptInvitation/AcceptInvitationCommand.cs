@@ -1,5 +1,8 @@
+using System.Data;
+using System.Security.Cryptography;
+using System.Text;
 using CleanArchCqrs.Application.Common.Interfaces;
-using CleanArchCqrs.Application.Common.Interfaces.Repositorires;
+using CleanArchCqrs.Application.Common.Interfaces.Repositories;
 using CleanArchCqrs.Application.Users.DTOs;
 using CleanArchCqrs.Domain.Entities;
 using FluentValidation;
@@ -8,6 +11,8 @@ using Microsoft.EntityFrameworkCore;
 
 namespace CleanArchCqrs.Application.Users.Commands.AcceptInvitation;
 
+
+ //Là một record đóng vai trò là DTO chứa dữ liệu đầu vào gửi từ client/API
 public record AcceptInvitationCommand(
     string Token,
     string Email,
@@ -16,6 +21,7 @@ public record AcceptInvitationCommand(
 
 public class AcceptInvitationCommandValidator : AbstractValidator<AcceptInvitationCommand>
 {
+    // Sử dụng FluentValidation để kiểm tra tính hợp lệ của dữ liệu trước khi xử lý
     public AcceptInvitationCommandValidator()
     {
         RuleFor(x => x.Token)
@@ -51,78 +57,109 @@ public class AcceptInvitationCommandHandler : IRequestHandler<AcceptInvitationCo
         _userAuthorizationRepository = userAuthorizationRepository;
     }
 
+    // Xử lý logic
     public async Task<LoginResponseDto> Handle(AcceptInvitationCommand request, CancellationToken cancellationToken)
     {
         var normalizedEmail = request.Email.Trim().ToLowerInvariant();
 
-        var tokenRecord = await _context.EmailVerificationTokens
-            .Include(t => t.User)
-                .ThenInclude(u => u.Tenant)
-            .FirstOrDefaultAsync(t => t.Token == request.Token.Trim() 
-                                   && t.User.Email.ToLower() == normalizedEmail, cancellationToken);
+        var strategy = _context.Database.CreateExecutionStrategy();
 
-        if (tokenRecord == null)
+        return await strategy.ExecuteAsync(async () =>
         {
-            throw new KeyNotFoundException("Mã kích hoạt không tồn tại hoặc email không trùng khớp.");
-        }
+            await using var transaction = await _context.Database.BeginTransactionAsync(
+                IsolationLevel.Serializable, cancellationToken);
 
-        if (tokenRecord.IsUsed)
-        {
-            throw new InvalidOperationException("Mã kích hoạt này đã được sử dụng trước đó. Vui lòng tiến hành đăng nhập.");
-        }
-
-        if (tokenRecord.ExpiresAt < DateTime.UtcNow)
-        {
-            throw new InvalidOperationException("Mã kích hoạt đã hết hạn (quá 48 giờ). Vui lòng liên hệ Quản trị viên để được cấp lại.");
-        }
-
-        var user = tokenRecord.User;
-
-        // 1. Update user password and activate account
-        user.ChangePassword(_passwordHasher.Hash(request.NewPassword));
-        user.Active();
-        user.EmailConfirmed = true;
-
-        // 2. Mark token as used
-        tokenRecord.MarkAsUsed();
-
-        // 3. Ensure UserStorageQuota exists for the tenant admin
-        var hasQuota = await _context.UserStorageQuotas
-            .AnyAsync(q => q.UserId == user.Id, cancellationToken);
-
-        if (!hasQuota && user.Tenant != null)
-        {
-            var defaultQuotaBytes = user.Tenant.StorageQuotaBytes > 0 
-                ? user.Tenant.StorageQuotaBytes 
-                : 10L * 1024 * 1024 * 1024; // 10 GB
-
-            var userQuota = new UserStorageQuota
+            try
             {
-                Id = Guid.NewGuid(),
-                UserId = user.Id,
-                QuotaBytes = defaultQuotaBytes,
-                UsedBytes = 0
-            };
+                var tokenRecord = await _context.EmailVerificationTokens
+                    .Include(t => t.User)
+                        .ThenInclude(u => u.Tenant)
+                    .FirstOrDefaultAsync(t => t.Token == request.Token.Trim() 
+                                           && t.User.Email.ToLower() == normalizedEmail, cancellationToken);
 
-            await _context.UserStorageQuotas.AddAsync(userQuota, cancellationToken);
-        }
+                if (tokenRecord == null)
+                {
+                    await transaction.RollbackAsync(cancellationToken);
+                    throw new KeyNotFoundException("Mã kích hoạt không tồn tại hoặc email không trùng khớp.");
+                }
 
-        await _context.SaveChangesAsync(cancellationToken);
+                if (tokenRecord.IsUsed)
+                {
+                    await transaction.RollbackAsync(cancellationToken);
+                    throw new InvalidOperationException("Mã kích hoạt này đã được sử dụng trước đó. Vui lòng tiến hành đăng nhập.");
+                }
 
-        // 4. Generate JWT Token so Tenant Admin is immediately logged in
-        var role = await _userAuthorizationRepository.GetRoleAsync(user.Id, cancellationToken) ?? "TenantAdmin";
-        var permissions = await _userAuthorizationRepository.GetPermissionsAsync(user.Id, cancellationToken);
+                if (tokenRecord.ExpiresAt < DateTime.UtcNow)
+                {
+                    await transaction.RollbackAsync(cancellationToken);
+                    throw new InvalidOperationException("Mã kích hoạt đã hết hạn (quá 48 giờ). Vui lòng liên hệ Quản trị viên để được cấp lại.");
+                }
 
-        var token = _jwtTokenService.GenerateAccessToken(user, role, permissions);
+                var user = tokenRecord.User;
 
-        return new LoginResponseDto(
-            token.AccessToken,
-            token.ExpiresAt,
-            user.Id,
-            user.Email,
-            user.FullName,
-            role,
-            user.TenantId,
-            permissions.ToList());
+                // 1. Update user password and activate account
+                user.ChangePassword(_passwordHasher.Hash(request.NewPassword));
+                user.Active();
+                user.EmailConfirmed = true;
+
+                // 2. Mark token as used
+                tokenRecord.MarkAsUsed();
+
+                // 3. Khởi tạo UserStorageQuota nếu tài khoản chưa có ví (BUG-34)
+                var hasQuota = await _context.UserStorageQuotas
+                    .AnyAsync(q => q.UserId == user.Id, cancellationToken);
+
+                if (!hasQuota)
+                {
+                    var newQuota = new UserStorageQuota
+                    {
+                        Id = Guid.NewGuid(),
+                        UserId = user.Id,
+                        QuotaBytes = 0L,
+                        UsedBytes = 0L
+                    };
+                    await _context.UserStorageQuotas.AddAsync(newQuota, cancellationToken);
+                }
+
+                await _context.SaveChangesAsync(cancellationToken);
+                await transaction.CommitAsync(cancellationToken);
+
+                // 4. Generate JWT Token and RefreshToken so user is immediately logged in
+                var role = await _userAuthorizationRepository.GetRoleAsync(user.Id, cancellationToken) ?? "TenantAdmin";
+                var permissions = await _userAuthorizationRepository.GetPermissionsAsync(user.Id, cancellationToken);
+
+                var token = _jwtTokenService.GenerateAccessToken(user, role, permissions);
+
+                var rawRefreshToken = Convert.ToBase64String(RandomNumberGenerator.GetBytes(64));
+                var tokenHash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(rawRefreshToken))).ToLowerInvariant();
+
+                var refreshTokenEntity = new CleanArchCqrs.Domain.Entities.RefreshToken(
+                    Guid.NewGuid(),
+                    user.Id,
+                    tokenHash,
+                    DateTime.UtcNow.AddDays(7),
+                    null);
+
+                _context.RefreshTokens.Add(refreshTokenEntity);
+                await _context.SaveChangesAsync(cancellationToken);
+
+                return new LoginResponseDto(
+                    token.AccessToken,
+                    rawRefreshToken,
+                    token.ExpiresAt,
+                    user.Id,
+                    user.Email,
+                    user.FullName,
+                    role,
+                    user.TenantId,
+                    permissions.ToList());
+            }
+            catch
+            {
+                await transaction.RollbackAsync(cancellationToken);
+                _context.ChangeTracker.Clear();
+                throw;
+            }
+        });
     }
 }

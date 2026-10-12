@@ -8,6 +8,7 @@ using CleanArchCqrs.Application.Features.SystemAdmin.Commands.UpdateUser;
 using CleanArchCqrs.Application.Features.SystemAdmin.DTOs;
 using CleanArchCqrs.Application.Features.SystemAdmin.Queries.GetUserById;
 using CleanArchCqrs.Application.Features.SystemAdmin.Queries.GetUsersWithPagination;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 
@@ -23,6 +24,7 @@ public class UsersController : ApiControllerBase
     /// <summary>
     /// Gets a paginated and filterable list of all system users.
     /// </summary>
+    [Authorize(Policy = "user.read")]
     [HttpGet]
     [ProducesResponseType(typeof(Result<PaginatedList<UserDto>>), StatusCodes.Status200OK)]
     public async Task<ActionResult> GetUsers([FromQuery] GetUsersWithPaginationQuery query)
@@ -34,6 +36,7 @@ public class UsersController : ApiControllerBase
     /// <summary>
     /// Gets detailed information of a user by ID including their assigned roles and permissions.
     /// </summary>
+    [Authorize(Policy = "user.read")]
     [HttpGet("{id:guid}")]
     [ProducesResponseType(typeof(Result<UserDto>), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(Result), StatusCodes.Status400BadRequest)]
@@ -46,6 +49,7 @@ public class UsersController : ApiControllerBase
     /// <summary>
     /// Creates a new account with specified role IDs and organizational scope (Tenant/Department).
     /// </summary>
+    [Authorize(Policy = "user.create")]
     [HttpPost]
     [ProducesResponseType(typeof(Result<UserDto>), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(Result), StatusCodes.Status400BadRequest)]
@@ -58,6 +62,7 @@ public class UsersController : ApiControllerBase
     /// <summary>
     /// Updates general profile information of a user.
     /// </summary>
+    [Authorize(Policy = "user.update")]
     [HttpPut("{id:guid}")]
     [ProducesResponseType(typeof(Result<UserDto>), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(Result), StatusCodes.Status400BadRequest)]
@@ -79,6 +84,7 @@ public class UsersController : ApiControllerBase
     /// <summary>
     /// Assigns or updates the roles and organization hierarchy (Tenant/Department) for a user.
     /// </summary>
+    [Authorize(Policy = "role.manage")]
     [HttpPut("{id:guid}/roles")]
     [ProducesResponseType(typeof(Result<UserDto>), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(Result), StatusCodes.Status400BadRequest)]
@@ -99,6 +105,7 @@ public class UsersController : ApiControllerBase
     /// <summary>
     /// Resets the password for a user account.
     /// </summary>
+    [Authorize(Policy = "user.update")]
     [HttpPost("{id:guid}/reset-password")]
     [ProducesResponseType(typeof(Result), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(Result), StatusCodes.Status400BadRequest)]
@@ -117,6 +124,7 @@ public class UsersController : ApiControllerBase
     /// <summary>
     /// Activates or deactivates a user account.
     /// </summary>
+    [Authorize(Policy = "user.update")]
     [HttpPatch("{id:guid}/status")]
     [ProducesResponseType(typeof(Result), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(Result), StatusCodes.Status400BadRequest)]
@@ -129,6 +137,7 @@ public class UsersController : ApiControllerBase
     /// <summary>
     /// Deletes a user account.
     /// </summary>
+    [Authorize(Policy = "user.delete")]
     [HttpDelete("{id:guid}")]
     [ProducesResponseType(typeof(Result), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(Result), StatusCodes.Status400BadRequest)]

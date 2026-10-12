@@ -11,7 +11,4 @@ public record UploadFileCommand : IRequest<Result<FileEntryDto>>
     public required string ContentType { get; init; }
     public required long FileSize { get; init; }
     public Guid? FolderId { get; init; }
-    public Guid? TenantIdOverride { get; init; }
-    public Guid? UserIdOverride { get; init; }
-    public Guid? StorageProviderIdOverride { get; init; }
 }

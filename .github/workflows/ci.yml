@@ -1,0 +1,48 @@
+name: Cloud-DMS CI Pipeline
+
+on:
+  push:
+    branches: [ "main", "master", "develop" ]
+  pull_request:
+    branches: [ "main", "master", "develop" ]
+
+jobs:
+  build-and-test:
+    name: Build & Test
+    runs-on: ubuntu-latest
+
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: RootPassword@123
+          MYSQL_DATABASE: clouddms_test
+        ports:
+          - 3306:3306
+        options: --health-cmd="mysqladmin ping -h localhost -u root -pRootPassword@123" --health-interval=10s --health-timeout=5s --health-retries=5
+
+    steps:
+    - name: Checkout Source Code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+
+    - name: Setup .NET SDK 8.0
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: '8.0.x'
+
+    - name: Restore NuGet Packages
+      run: dotnet restore
+
+    - name: Build Solution (Release)
+      run: dotnet build --configuration Release --no-restore
+
+    - name: Run Automated Tests
+      run: dotnet test --configuration Release --no-build --verbosity normal
+
+    - name: Scan Secrets with Gitleaks
+      uses: gitleaks/gitleaks-action@v2
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      continue-on-error: true

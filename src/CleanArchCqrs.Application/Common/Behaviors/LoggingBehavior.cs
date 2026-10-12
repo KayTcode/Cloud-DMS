@@ -1,16 +1,13 @@
-using System.Text.Json;
+using System.Diagnostics;
 using MediatR;
 using Microsoft.Extensions.Logging;
 
 namespace CleanArchCqrs.Application.Common.Behaviors;
 
 /// <summary>
-/// Pipeline behavior for structured logging of requests and responses.
-/// This is a stub - it just passes through without any logging.
-/// TODO: Add structured logging — see full implementation at https://www.patreon.com/posts/152905861
+/// Pipeline behavior for structured logging of MediatR requests and responses,
+/// tracking execution duration and capturing failures.
 /// </summary>
-/// <typeparam name="TRequest">Request type</typeparam>
-/// <typeparam name="TResponse">Response type</typeparam>
 public class LoggingBehavior<TRequest, TResponse> : IPipelineBehavior<TRequest, TResponse>
     where TRequest : notnull
 {
@@ -21,9 +18,41 @@ public class LoggingBehavior<TRequest, TResponse> : IPipelineBehavior<TRequest, 
         _logger = logger;
     }
 
-    public async Task<TResponse> Handle(TRequest request, RequestHandlerDelegate<TResponse> next, CancellationToken cancellationToken)
+    public async Task<TResponse> Handle(
+        TRequest request, 
+        RequestHandlerDelegate<TResponse> next, 
+        CancellationToken cancellationToken)
     {
-        // TODO: Add structured logging with request/response, elapsed time, and correlation ID — see full implementation at Patreon
-        return await next();
+        var requestName = typeof(TRequest).Name;
+        var correlationId = Guid.NewGuid().ToString("N")[..8];
+
+        _logger.LogInformation(
+            "[{CorrelationId}] Handling request {RequestName}",
+            correlationId, requestName);
+
+        var stopwatch = Stopwatch.StartNew();
+
+        try
+        {
+            var response = await next();
+            stopwatch.Stop();
+
+            _logger.LogInformation(
+                "[{CorrelationId}] Handled request {RequestName} successfully in {ElapsedMilliseconds}ms",
+                correlationId, requestName, stopwatch.ElapsedMilliseconds);
+
+            return response;
+        }
+        catch (Exception ex)
+        {
+            stopwatch.Stop();
+
+            _logger.LogError(
+                ex,
+                "[{CorrelationId}] Request {RequestName} failed after {ElapsedMilliseconds}ms with error: {ErrorMessage}",
+                correlationId, requestName, stopwatch.ElapsedMilliseconds, ex.Message);
+
+            throw;
+        }
     }
 }

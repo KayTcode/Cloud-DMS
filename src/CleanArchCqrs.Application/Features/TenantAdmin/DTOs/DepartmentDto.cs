@@ -13,7 +13,14 @@ public class DepartmentDto
     public int HeadCount { get; set; }
     public string Lead { get; set; } = "Chưa chỉ định";
     public string? AdminEmail { get; set; }
-    public long AllocatedStorageGB { get; set; } = 50;
+    public long StorageQuotaBytes { get; set; }
+    public long StorageUsedBytes { get; set; }
+    public double AllocatedStorageGB => StorageQuotaBytes > 0 
+        ? Math.Round((double)StorageQuotaBytes / (1024 * 1024 * 1024), 2) 
+        : 0;
+    public double UsedStorageGB => StorageUsedBytes > 0 
+        ? Math.Round((double)StorageUsedBytes / (1024 * 1024 * 1024), 2) 
+        : 0;
     public DateTime CreatedAt { get; set; }
 
     public static DepartmentDto FromEntity(Department dept)
@@ -37,7 +44,8 @@ public class DepartmentDto
             HeadCount = dept.Users.Count,
             Lead = leadName,
             AdminEmail = adminUser?.Email,
-            AllocatedStorageGB = 50, // Default 50GB per department quota
+            StorageQuotaBytes = dept.StorageQuotaBytes,
+            StorageUsedBytes = dept.StorageUsedBytes,
             CreatedAt = dept.CreatedAt
         };
     }

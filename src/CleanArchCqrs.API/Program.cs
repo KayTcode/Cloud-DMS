@@ -13,6 +13,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
 using System.Text;
+using System.Threading.RateLimiting;
 using System.Threading.Tasks;
 
 namespace CleanArchCqrs.API;
@@ -29,14 +30,18 @@ public class Program
         // Add services
         builder.Services.AddControllers();
 
-        // Add CORS
+        // Add CORS (P3-07 / BUG-38: Cấu hình nguồn từ AllowedOrigins, loại bỏ AllowAnyOrigin)
         builder.Services.AddCors(options =>
         {
+            var allowedOrigins = builder.Configuration.GetSection("Cors:AllowedOrigins").Get<string[]>()
+                ?? new[] { "http://localhost:3000", "http://localhost:5173" };
+
             options.AddPolicy("AllowFrontend", policy =>
             {
-                policy.AllowAnyOrigin()
+                policy.WithOrigins(allowedOrigins)
                       .AllowAnyMethod()
-                      .AllowAnyHeader();
+                      .AllowAnyHeader()
+                      .AllowCredentials();
             });
         });
 
@@ -62,7 +67,13 @@ public class Program
                 };
             });
 
-        builder.Services.AddAuthorization();
+        builder.Services.AddAuthorization(options =>
+        {
+            // Mọi endpoint PHẢI đăng nhập, trừ khi khai báo [AllowAnonymous]
+            options.FallbackPolicy = new AuthorizationPolicyBuilder()
+                .RequireAuthenticatedUser()
+                .Build();
+        });
         builder.Services.AddSingleton<IAuthorizationPolicyProvider, PermissionPolicyProvider>();
         builder.Services.AddEndpointsApiExplorer();
 
@@ -110,6 +121,39 @@ public class Program
         builder.Services.AddScoped<CleanArchCqrs.Application.Common.Interfaces.ICurrentUserService, CleanArchCqrs.API.Services.CurrentUserService>();
         builder.Services.AddInfrastructureServices(builder.Configuration);
         builder.Services.AddApplicationServices();
+        builder.Services.AddHealthChecks();
+
+        // Rate Limiter configuration (P3-01 / BUG-17)
+        builder.Services.AddRateLimiter(options =>
+        {
+            options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+
+            // Policy "auth": Tối đa 5 requests / 1 phút theo Client IP (chống brute force đăng nhập / kích hoạt)
+            options.AddPolicy("auth", httpContext =>
+                RateLimitPartition.GetFixedWindowLimiter(
+                    partitionKey: httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown_ip",
+                    factory: _ => new FixedWindowRateLimiterOptions
+                    {
+                        PermitLimit = 5,
+                        Window = TimeSpan.FromMinutes(1),
+                        QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
+                        QueueLimit = 0
+                    }));
+
+            // Policy "upload": Tối đa 30 requests / 1 phút theo User hoặc Client IP (chống spam upload tệp tin)
+            options.AddPolicy("upload", httpContext =>
+                RateLimitPartition.GetFixedWindowLimiter(
+                    partitionKey: httpContext.User?.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value
+                                  ?? httpContext.Connection.RemoteIpAddress?.ToString()
+                                  ?? "unknown_ip",
+                    factory: _ => new FixedWindowRateLimiterOptions
+                    {
+                        PermitLimit = 30,
+                        Window = TimeSpan.FromMinutes(1),
+                        QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
+                        QueueLimit = 0
+                    }));
+        });
 
         var app = builder.Build();
         using (var scope = app.Services.CreateScope())
@@ -125,131 +169,24 @@ public class Program
                 }
                 catch (Exception mex)
                 {
-                    logger.LogWarning(mex, "Database migration skipped or tables already exist.");
-                }
-
-                // Ensure newly added columns & tables exist in MySQL
-                try
-                {
-                    await context.Database.ExecuteSqlRawAsync(
-                        "ALTER TABLE `Users` ADD COLUMN `EmailConfirmed` tinyint(1) NOT NULL DEFAULT 0;");
-                    logger.LogInformation("Added missing column EmailConfirmed to Users table.");
-                }
-                catch
-                {
-                    // Column already exists, ignore
-                }
-
-                try
-                {
-                    // Ensure existing demo users are confirmed so login succeeds
-                    await context.Database.ExecuteSqlRawAsync(
-                        "UPDATE `Users` SET `EmailConfirmed` = 1 WHERE `EmailConfirmed` = 0;");
-                }
-                catch
-                {
-                    // Ignore
-                }
-
-                try
-                {
-                    await context.Database.ExecuteSqlRawAsync(@"
-                        CREATE TABLE IF NOT EXISTS `EmailVerificationTokens` (
-                            `Id` char(36) COLLATE ascii_general_ci NOT NULL,
-                            `UserId` char(36) COLLATE ascii_general_ci NOT NULL,
-                            `Token` varchar(256) CHARACTER SET utf8mb4 NOT NULL,
-                            `TokenType` varchar(50) CHARACTER SET utf8mb4 NOT NULL,
-                            `ExpiresAt` datetime(6) NOT NULL,
-                            `IsUsed` tinyint(1) NOT NULL,
-                            `UsedAt` datetime(6) NULL,
-                            `CreatedAt` datetime(6) NOT NULL,
-                            `UpdatedAt` datetime(6) NULL,
-                            PRIMARY KEY (`Id`),
-                            KEY `IX_EmailVerificationTokens_UserId` (`UserId`),
-                            KEY `IX_EmailVerificationTokens_Token` (`Token`),
-                            KEY `IX_EmailVerificationTokens_Token_IsUsed` (`Token`, `IsUsed`),
-                            CONSTRAINT `FK_EmailVerificationTokens_Users_UserId` FOREIGN KEY (`UserId`) REFERENCES `Users` (`Id`) ON DELETE CASCADE
-                        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;");
-                }
-                catch (Exception exTokens)
-                {
-                    logger.LogWarning(exTokens, "Creation of EmailVerificationTokens table skipped.");
-                }
-
-                try
-                {
-                    await context.Database.ExecuteSqlRawAsync(@"
-                        CREATE TABLE IF NOT EXISTS `UserStorageQuotas` (
-                            `Id` char(36) COLLATE ascii_general_ci NOT NULL,
-                            `UserId` char(36) COLLATE ascii_general_ci NOT NULL,
-                            `QuotaBytes` bigint NOT NULL,
-                            `UsedBytes` bigint NOT NULL,
-                            `CreatedAt` datetime(6) NOT NULL,
-                            `UpdatedAt` datetime(6) NULL,
-                            PRIMARY KEY (`Id`),
-                            UNIQUE KEY `IX_UserStorageQuotas_UserId` (`UserId`),
-                            CONSTRAINT `FK_UserStorageQuotas_Users_UserId` FOREIGN KEY (`UserId`) REFERENCES `Users` (`Id`) ON DELETE CASCADE
-                        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;");
-                }
-                catch (Exception exQuotas)
-                {
-                    logger.LogWarning(exQuotas, "Creation of UserStorageQuotas table skipped.");
-                }
-
-                try
-                {
-                    await context.Database.ExecuteSqlRawAsync(@"
-                        CREATE TABLE IF NOT EXISTS `StorageProviders` (
-                            `Id` char(36) COLLATE ascii_general_ci NOT NULL,
-                            `Name` varchar(200) CHARACTER SET utf8mb4 NOT NULL,
-                            `Type` int NOT NULL,
-                            `ConfigEncrypted` longtext CHARACTER SET utf8mb4 NOT NULL,
-                            `TotalCapacityBytes` bigint NOT NULL,
-                            `UsedCapacityBytes` bigint NOT NULL,
-                            `RootFolderId` varchar(255) CHARACTER SET utf8mb4 NULL,
-                            `IsActive` tinyint(1) NOT NULL DEFAULT 1,
-                            `Status` varchar(50) CHARACTER SET utf8mb4 NOT NULL DEFAULT 'Connected',
-                            `LastSyncAt` datetime(6) NULL,
-                            `CreatedAt` datetime(6) NOT NULL,
-                            `UpdatedAt` datetime(6) NULL,
-                            PRIMARY KEY (`Id`)
-                        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;");
-
-                    try
+                    logger.LogError(mex, "Database migration failed.");
+                    if (!app.Environment.IsDevelopment())
                     {
-                        await context.Database.ExecuteSqlRawAsync(@"
-                            ALTER TABLE `Tenants` ADD COLUMN `StorageProviderId` char(36) COLLATE ascii_general_ci NULL;");
+                        throw;
                     }
-                    catch { /* column already exists */ }
-
-                    try
-                    {
-                        await context.Database.ExecuteSqlRawAsync(@"
-                            ALTER TABLE `FileEntries` ADD COLUMN `StorageProviderId` char(36) COLLATE ascii_general_ci NULL;");
-                    }
-                    catch { /* column already exists */ }
-
-                    try
-                    {
-                        await context.Database.ExecuteSqlRawAsync(@"
-                            ALTER TABLE `FileEntries` ADD COLUMN `ScanStatus` varchar(50) NOT NULL DEFAULT 'Clean';");
-                    }
-                    catch { /* column already exists */ }
-                }
-                catch (Exception exProviders)
-                {
-                    logger.LogWarning(exProviders, "Creation of StorageProviders table skipped.");
                 }
 
                 var passwordHasher = services.GetRequiredService<CleanArchCqrs.Application.Common.Interfaces.IPasswordHasher>();
-                await DbInitializer.SeedDefaultDataAsync(context, passwordHasher, logger);
+                await DbInitializer.SeedDefaultDataAsync(context, passwordHasher, logger, isDevelopment: app.Environment.IsDevelopment());
             }
             catch (Exception ex)
             {
-                logger.LogError(ex, "An error occurred while seeding the database.");
+                logger.LogError(ex, "An error occurred while initializing/seeding the database.");
             }
         }
         // Configure pipeline
+        app.UseMiddleware<CleanArchCqrs.API.Middleware.GlobalExceptionHandlerMiddleware>();
+
         if (app.Environment.IsDevelopment())
         {
             app.UseSwagger();
@@ -260,10 +197,28 @@ public class Program
             });
         }
 
+        // Security Headers Middleware (P3-07 / BUG-38)
+        app.Use(async (context, next) =>
+        {
+            context.Response.Headers.Append("X-Content-Type-Options", "nosniff");
+            context.Response.Headers.Append("X-Frame-Options", "DENY");
+            context.Response.Headers.Append("Referrer-Policy", "strict-origin-when-cross-origin");
+            context.Response.Headers.Append("X-XSS-Protection", "1; mode=block");
+            await next();
+        });
+
+        if (!app.Environment.IsDevelopment())
+        {
+            app.UseHsts();
+            app.UseHttpsRedirection();
+        }
+
         app.UseCors("AllowFrontend");
         app.UseAuthentication();
         app.UseAuthorization();
+        app.UseRateLimiter();
         app.MapControllers();
+        app.MapHealthChecks("/health");
 
         await app.RunAsync();
     }

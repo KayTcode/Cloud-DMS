@@ -2,6 +2,7 @@ namespace CleanArchCqrs.Application.Users.DTOs;
 
 public sealed record LoginResponseDto(
     string AccessToken,
+    string RefreshToken,
     DateTime ExpiresAt,
     Guid UserId,
     string Email,

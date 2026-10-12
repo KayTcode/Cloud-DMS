@@ -1,259 +1,144 @@
-# dotnet-clean-architecture-cqrs-starter
+# Cloud-DMS — Enterprise Multi-Tenant Cloud Document Management System
 
-> A structured starter template for Clean Architecture with CQRS and MediatR in ASP.NET Core 10 — explore the architecture, then get the full production implementation on Patreon.
+> Hệ thống Quản lý Tài liệu Đám mây Đa Doanh nghiệp (Multi-Tenant Document Management System) xây dựng theo kiến trúc **Clean Architecture** kết hợp mô hình **CQRS (Command Query Responsibility Segregation)**, hỗ trợ phân cấp hạn mức lưu trữ 4 tầng và đa nhà cung cấp đám mây (Google Drive, Microsoft OneDrive, Local Storage).
 
-[![Visit CodingDroplets](https://img.shields.io/badge/Website-codingdroplets.com-blue?style=for-the-badge&logo=google-chrome&logoColor=white)](https://codingdroplets.com/)
-[![YouTube](https://img.shields.io/badge/YouTube-CodingDroplets-red?style=for-the-badge&logo=youtube&logoColor=white)](https://www.youtube.com/@CodingDroplets)
-[![Patreon](https://img.shields.io/badge/Patreon-Support%20Us-orange?style=for-the-badge&logo=patreon&logoColor=white)](https://www.patreon.com/CodingDroplets)
-[![Buy Me a Coffee](https://img.shields.io/badge/Buy%20Me%20a%20Coffee-Support%20Us-yellow?style=for-the-badge&logo=buy-me-a-coffee&logoColor=black)](https://buymeacoffee.com/codingdroplets)
-[![GitHub](https://img.shields.io/badge/GitHub-codingdroplets-black?style=for-the-badge&logo=github&logoColor=white)](http://github.com/codingdroplets/)
+---
 
-## 🚀 Get the Complete Production Implementation
+## 🌟 Tính Năng Nổi Bật
 
-This repo is a **free starter template** — it gives you the full project structure and architecture to explore.
+- **Kiến trúc Multi-Tenant & RBAC 4 Cấp Độ:**
+  - **System Admin**: Quản trị toàn hệ thống, đăng ký và cấu hình các Cloud Storage Provider, tạo Tenant mới, cấp hạn mức lưu trữ (Quota) cho Tenant và giám sát Audit Logs.
+  - **Tenant Admin**: Quản trị tổ chức doanh nghiệp, quản lý các phòng ban, chỉ định Trưởng phòng (Department Admin) và phân bổ Quota tổng cho từng phòng ban.
+  - **Department Admin**: Thiết lập phòng ban, mời/tạo nhân viên trong phòng ban và phân bổ hạn mức lưu trữ cá nhân cho từng nhân viên.
+  - **Employee**: Tải lên, tải xuống, tìm kiếm phân trang và quản lý tài liệu cá nhân trong phạm vi dung lượng được cấp.
 
-The **complete, production-ready version** with all business logic, pipeline behaviors, domain invariants, FluentValidation rules, global error handling, and **29 passing tests** is available exclusively on Patreon.
+- **Mô Hình Quản Lý Hạn Mức Lưu Trữ 4 Tầng (Hierarchical Quota Management):**
+  `Storage Provider (Pool Tổng) ➔ Tenant Quota (Gói Doanh Nghiệp) ➔ Department Quota (Phòng Ban) ➔ User Storage Quota (Cá Nhân)`
+  Đảm bảo kiểm soát chặt chẽ dung lượng không vượt trần ở bất kỳ cấp độ nào.
 
-👉 **[Get the full Source Code on Patreon](https://www.patreon.com/posts/152905861)**
+- **Bảo Mật & Kiểm Soát Rủi Ro Mức Doanh Nghiệp:**
+  - **Chống Race Condition Quota Overcommit**: Áp dụng cơ chế **Hai Pha (Two-Phase Verification)** kết hợp Transaction mức cô lập `IsolationLevel.Serializable` và `ExecutionStrategy.ExecuteAsync`. Tự động bồi hoàn dọn dẹp file Cloud nếu phát hiện vi phạm dung lượng khi upload đồng thời.
+  - **Chống Brute-force & DoS (Rate Limiting)**: Chính sách giới hạn 5 requests/phút cho Authentication và 30 requests/phút cho File Uploads.
+  - **JWT 15 Phút + Refresh Token Rotation**: Access Token có hạn ngắn 15 phút, tự động xoay vòng Refresh Token (TTL 7 ngày) trên Axios Interceptor mà không làm gián đoạn trải nghiệm người dùng; tự động thu hồi session khi đổi mật khẩu/khóa tài khoản.
+  - **Quét Mã Độc Tự Động (ClamAV)**: Kiểm tra virus theo giao thức TCP INSTREAM trước khi lưu trữ, áp dụng cơ chế **Fail-Closed** ở môi trường Production.
+  - **Security Headers & CORS**: Bảo vệ chống XSS, Clickjacking, MIME-sniffing (`X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy`) và cấu hình CORS chặt chẽ theo `Cors:AllowedOrigins`.
 
-Prefer a one-time tip? [Buy us a coffee ☕](https://buymeacoffee.com/codingdroplets)
+---
 
-## 🎯 What You'll Learn
+## 🛠️ Công Nghệ Sử Dụng
 
-- How Clean Architecture layers are structured in a real .NET solution
-- Why the dependency rule matters and how project references enforce it
-- How CQRS separates commands from queries
-- How MediatR pipeline behaviors work (logging, validation)
-- Where each pattern fits in the folder structure
+### Backend
+- **Framework**: .NET 8 (C# 12), ASP.NET Core Web API
+- **Kiến trúc**: Clean Architecture (Domain, Application, Infrastructure, API)
+- **Design Pattern**: CQRS với **MediatR**, FluentValidation
+- **ORM & Database**: Entity Framework Core 8, MySQL / MariaDB (Pomelo provider)
+- **Bảo mật & Token**: ASP.NET Core Identity Tokens, JWT Bearer, BCrypt.Net
+- **Cloud Integrations**: Google Drive API v3, Microsoft Graph API, MailKit (SMTP)
 
-## 🗺️ Architecture Overview
+### Frontend
+- **Framework**: React 19, TypeScript
+- **Tooling**: Vite, TailwindCSS, Lucide Icons
+- **HTTP Client**: Axios với Interceptor tự động Refresh Token và xử lý lỗi đồng bộ
 
-```
-┌─────────────────────────────────────────────────────────────────────┐
-│                            API Layer                                │
-│  ┌─────────────┐  ┌─────────────┐  ┌─────────────────────────────┐  │
-│  │ Controllers │  │ Middleware  │  │ Program.cs (Wiring)         │  │
-│  └─────────────┘  └─────────────┘  └─────────────────────────────┘  │
-│         │                   │                     │                 │
-│         └───────────────────┼─────────────────────┘                 │
-│                             │                                       │
-│  ┌──────────────────────────▼───────────────────────────────────┐   │
-│  │              Application Layer                               │   │
-│  │  ┌─────────────┐  ┌─────────────┐  ┌─────────────────────┐   │   │
-│  │  │   Commands  │  │   Queries   │  │  Behaviors          │   │   │
-│  │  │  (C Q R)    │  │  (C Q R)    │  │  (Pipeline)         │   │   │
-│  │  └─────────────┘  └─────────────┘  └─────────────────────┘   │   │
-│  │         │                   │                     │          │   │
-│  │         └───────────────────┼─────────────────────┘          │   │
-│  │                             │                                │   │
-│  └─────────────────────────────┼────────────────────────────────┘   │
-│                                │                                    │
-│  ┌─────────────────────────────▼──────────────────────────────┐     │
-│  │              Domain Layer                                  │     │
-│  │  ┌─────────────┐  ┌─────────────┐  ┌─────────────────────┐ │     │
-│  │  │  Entities   │  │  Value Obj  │  │  Interfaces/Repo    │ │     │
-│  │  │  (Agg Roots)│  │  (Domain)   │  │  (Abstractions)     │ │     │
-│  │  └─────────────┘  └─────────────┘  └─────────────────────┘ │     │
-│  │         │                                                  │     │
-│  └─────────┼──────────────────────────────────────────────────┘     │
-│            │                                                        │
-│  ┌─────────▼─────────────────────────────────────────────────────┐  │
-│  │           Infrastructure Layer                                │  │
-│  │  ┌─────────────┐  ┌─────────────┐  ┌─────────────────────┐    │  │
-│  │  │ Repository  │  │   EF Core   │  │  Ext. Services      │    │  │
-│  │  │  Impl       │  │ DbContext   │  │  (DB, Cache, etc)   │    │  │
-│  │  └─────────────┘  └─────────────┘  └─────────────────────┘    │  │
-│  └───────────────────────────────────────────────────────────────┘  │
-└─────────────────────────────────────────────────────────────────────┘
+---
 
-Dependency Rule: Dependencies point INWARD toward Domain.
-API → Application → Domain (Infrastructure → Domain as well)
-```
-
-## 📋 Summary
-
-| Layer | Responsibility | Depends On | Full Implementation |
-|-------|---------------|------------|---------------------|
-| Domain | Business entities + rules | Nothing | ✅ Patreon |
-| Application | Use cases (CQRS + MediatR) | Domain | ✅ Patreon |
-| Infrastructure | EF Core + repositories | Domain + Application | ✅ Patreon |
-| API | HTTP transport | Application + Infrastructure | ✅ Patreon |
-
-## 📁 Project Structure
+## 🏛️ Cấu Trúc Dự Án (Clean Architecture)
 
 ```
-dotnet-clean-architecture-cqrs-starter/
-├── dotnet-clean-architecture-cqrs-starter.sln
-└── src/
-    ├── CleanArchCqrs.Domain/
-    │   ├── CleanArchCqrs.Domain.csproj
-    │   ├── Common/
-    │   │   └── BaseEntity.cs                    # Base class with Id
-    │   ├── Entities/
-    │   │   └── Product.cs                       # Product entity (stub properties only)
-    │   ├── Exceptions/
-    │   │   └── DomainException.cs              # Base domain exception
-    │   └── Interfaces/
-    │       └── IProductRepository.cs           # Repository contract (full method set)
-    │
-    ├── CleanArchCqrs.Application/
-    │   ├── CleanArchCqrs.Application.csproj
-    │   ├── Common/
-    │   │   ├── Behaviors/
-    │   │   │   ├── LoggingBehavior.cs          # Stub: passes through, no logging
-    │   │   │   └── ValidationBehavior.cs       # Stub: passes through, no validation
-    │   │   ├── Exceptions/
-    │   │   │   └── ValidationException.cs      # Validation exception type
-    │   │   └── Models/
-    │   │       ├── ProductDto.cs               # DTO for API responses
-    │   │       └── PagedResult.cs              # Pagination wrapper
-    │   ├── DependencyInjection/
-    │   │   └── ApplicationServiceExtensions.cs # Registers MediatR, behaviors, validators
-    │   └── Products/
-    │       ├── Commands/
-    │       │   ├── CreateProduct/
-    │       │   │   ├── CreateProductCommand.cs       # Returns Guid.Empty
-    │       │   │   └── CreateProductCommandValidator.cs  # Empty validator
-    │       │   ├── UpdateProduct/
-    │       │   │   ├── UpdateProductCommand.cs      # Returns Unit.Value
-    │       │   │   └── UpdateProductCommandValidator.cs  # Empty validator
-    │       │   └── DeleteProduct/
-    │       │       └── DeleteProductCommand.cs      # Returns Unit.Value
-    │       ├── Queries/
-    │       │   ├── GetProduct/
-    │       │   │   └── GetProductQuery.cs          # Returns null/empty DTO
-    │       │   └── GetProducts/
-    │       │       └── GetProductsQuery.cs         # Returns empty PagedResult
-    │       └── Validators/                          # Validator collection
-    │           ├── CreateProductCommandValidator.cs
-    │           └── UpdateProductCommandValidator.cs
-    │
-    ├── CleanArchCqrs.Infrastructure/
-    │   ├── CleanArchCqrs.Infrastructure.csproj
-    │   ├── DependencyInjection/
-    │   │   └── InfrastructureServiceExtensions.cs  # Registers DbContext, repositories
-    │   ├── Persistence/
-    │   │   └── AppDbContext.cs                    # EF Core context (stub config)
-    │   └── Repositories/
-    │       └── ProductRepository.cs               # All methods throw NotImplementedException
-    │
-    └── CleanArchCqrs.API/
-        ├── CleanArchCqrs.API.csproj
-        ├── Controllers/
-        │   └── ProductsController.cs              # Full CRUD endpoints with CQRS
-        ├── Middleware/
-        │   └── GlobalExceptionHandlerMiddleware.cs # Stub: just re-throws
-        ├── Properties/
-        │   └── launchSettings.json                # Swagger launch configured
-        ├── Program.cs                              # Full service wiring + Swagger UI
-        ├── appsettings.json
-        └── appsettings.Development.json
+Cloud-DMS/
+├── src/
+│   ├── CleanArchCqrs.Domain/           # Core Entities (Tenant, User, Department, FileEntry, Quota...)
+│   ├── CleanArchCqrs.Application/      # CQRS Commands & Queries, DTOs, Behaviors, Interfaces
+│   ├── CleanArchCqrs.Infrastructure/   # EF Core DbContext, ClamAV, EmailService, Cloud Storage Services
+│   └── CleanArchCqrs.API/              # Controllers, Middlewares, Rate Limiter, Program.cs
+├── Cloud-DMS-FE/                       # Ứng dụng Frontend React Vite
+│   ├── src/
+│   │   ├── features/                   # Modules: auth, system-admin, tenants, department, user
+│   │   ├── api/                        # axiosClient & refresh token interceptor
+│   │   └── layouts/                    # MainLayout, Sidebar, Navbar
+├── docs/                               # Tài liệu đặc tả phân quyền và API (00 -> 04)
+└── plan/                               # Kế hoạch phát triển, kiểm nghiệm và theo dõi bug
 ```
 
-## 🔓 Free Starter vs Full Patreon Version
+---
 
-This is the KEY section — see what you get in the complete production code:
+## 🚀 Hướng Dẫn Cài Đặt & Khởi Chạy
 
-| Feature | This Repo (Free) | Patreon Version |
-|---------|-----------------|-----------------|
-| Project structure (4 layers) | ✅ Complete | ✅ Complete |
-| All .csproj with correct packages | ✅ Complete | ✅ Complete |
-| Domain entity properties | ✅ Included | ✅ Included |
-| Factory method + domain invariants | ❌ Stub | ✅ Full implementation |
-| MediatR handler logic | ❌ Returns defaults | ✅ Full implementation |
-| FluentValidation rules | ❌ Empty validators | ✅ Full implementation |
-| Logging pipeline behavior | ❌ Pass-through stub | ✅ Structured logging + elapsed time |
-| Validation pipeline behavior | ❌ Pass-through stub | ✅ Auto-validation with concurrent execution |
-| Repository implementation | ❌ NotImplementedException | ✅ EF Core with AsNoTracking, search, pagination |
-| Global exception handler | ❌ Re-throws | ✅ RFC 7807 Problem Details mapping |
-| Unit tests (domain + handlers + validators) | ❌ Not included | ✅ 22 unit tests |
-| Integration tests (WebApplicationFactory) | ❌ Not included | ✅ 7 integration tests |
-| Pre-seeded data | ❌ No data | ✅ 3 products seeded on startup |
-| Working API responses | ❌ Empty defaults | ✅ Full CRUD with search + pagination |
+### 1. Yêu Cầu Môi Trường
+- .NET 8.0 SDK trở lên
+- Node.js 18+ & npm
+- MySQL Server (Port 3306)
+- ClamAV Daemon (tùy chọn trong môi trường Development, cổng 3310)
 
-👉 **[Get the complete version on Patreon](https://www.patreon.com/posts/152905861)**
+### 2. Cấu Hình Backend
+Chỉnh sửa cấu hình chuỗi kết nối và thông tin SMTP trong `src/CleanArchCqrs.API/appsettings.json`:
+```json
+{
+  "ConnectionStrings": {
+    "DefaultConnection": "Server=localhost;Port=3306;Database=CloudDmsDb;User=root;Password=your_password;CharSet=utf8mb4;"
+  },
+  "Cors": {
+    "AllowedOrigins": [
+      "http://localhost:3000",
+      "http://localhost:5173"
+    ]
+  },
+  "ClamAV": {
+    "Host": "127.0.0.1",
+    "Port": 3310,
+    "Enabled": true
+  }
+}
+```
 
-## 🛠️ Prerequisites
-
-- **.NET 10 SDK** — [download from Microsoft](https://dotnet.microsoft.com/download/dotnet/10.0)
-- **IDE** — Visual Studio 2022+, VS Code (with C# Dev Kit), or JetBrains Rider
-
-## ⚡ Quick Start
-
+### 3. Chạy Backend API (Local Development)
 ```bash
-# Clone the repository
-git clone https://github.com/codingdroplets/dotnet-clean-architecture-cqrs-starter.git
-cd dotnet-clean-architecture-cqrs-starter
-
-# Restore NuGet packages
+cd Cloud-DMS
 dotnet restore
+dotnet run --project src/CleanArchCqrs.API
+```
+- Khi chạy ở môi trường `Development`, hệ thống sẽ tự động thực thi Migration và khởi tạo dữ liệu RBAC + tài khoản demo System Admin mặc định:
+  - **Tài khoản**: `admin@clouddms.com`
+  - **Mật khẩu**: `Admin@123`
+- Swagger UI tài liệu API: `http://localhost:5000/` hoặc `https://localhost:5001/`
+- Kiểm tra trạng thái hệ thống: `GET http://localhost:5000/health` (Healthy)
 
-# Build in Release
-dotnet build -c Release
-
-# Run the API (Swagger UI opens automatically)
-dotnet run --project src/CleanArchCqrs.API/CleanArchCqrs.API.csproj
+### 4. Khởi Chạy Bằng Docker Compose (Toàn Diện)
+Hệ thống cung cấp sẵn `docker-compose.yml` tích hợp 3 services: **Backend API (.NET 8 non-root)**, **MySQL 8.0**, và **ClamAV Antivirus Daemon**:
+```bash
+cp .env.example .env
+docker compose up -d --build
 ```
 
-Then open:
-- **Swagger UI:** http://localhost:5289 (HTTP) or https://localhost:7163 (HTTPS)
-- **API base:** http://localhost:5289/api/products
-
-> **Note:** This starter template returns empty/default responses because handlers are stubs. The full Patreon version returns real data with proper business logic.
-
-## 🔧 How It Works
-
-### 1. Domain Layer (CleanArchCqrs.Domain)
-- Contains business entities, value objects, domain exceptions, and repository interfaces.
-- **Zero dependencies** on other layers — it's pure business logic.
-- `Product` entity: properties only in this stub; the full version includes factory methods, domain invariants, and encapsulated validation.
-
-### 2. Application Layer (CleanArchCqrs.Application)
-- Use cases implemented as CQRS commands and queries with MediatR.
-- Pipeline behaviors for cross-cutting concerns: logging and validation.
-- DTOs for data transfer and FluentValidation validators.
-- Depends only on Domain (and MediatR/FluentValidation packages).
-
-### 3. Infrastructure Layer (CleanArchCqrs.Infrastructure)
-- Implements repository interfaces from Domain using EF Core.
-- DbContext configuration and database-specific concerns.
-- Depends on Domain (entities/interfaces) and Application (DTOs if needed).
-
-### 4. API Layer (CleanArchCqrs.API)
-- ASP.NET Core Web API with controllers that send commands/queries via IMediator.
-- Global exception handling middleware (stub only here).
-- Swagger/OpenAPI configuration for interactive API exploration.
-- Wires up all layers in `Program.cs`.
-
-### Dependency Injection Flow
-```csharp
-// In Program.cs (API)
-services.AddApplicationServices();  // MediatR, behaviors, validators
-services.AddInfrastructureServices(); // DbContext, repositories
+### 5. Chạy Kiểm Thử Tự Động (Automated Testing)
+Bộ kiểm thử tích hợp 20 kịch bản Unit & Integration test bảo vệ Quota, IDOR, phân quyền và bảo mật:
+```bash
+dotnet test tests/CleanArchCqrs.Tests/CleanArchCqrs.Tests.csproj
 ```
 
-Results in this container registration:
-- `IRequest<T>` → `RequestHandler<T>` (MediatR)
-- `IProductRepository` → `ProductRepository`
-- `AppDbContext` → InMemory database (this stub)
+### 6. Chạy Frontend
+```bash
+cd Cloud-DMS-FE
+npm install
+npm run dev
+```
+Truy cập giao diện Web tại `http://localhost:5173/`.
 
-## 📚 Further Reading
+---
 
-- **Article:** [Clean Architecture with CQRS + MediatR in ASP.NET Core 10](https://codingdroplets.com/clean-architecture-cqrs-mediatr-aspnet-core-2026)
-- **Full Source Code:** [Get All Business Logic + 29 Tests](https://www.patreon.com/posts/152905861)
+## 📚 Tài Liệu Đặc Tả & Báo Cáo Dự Án
 
-## 📄 License
+- **Đặc tả Phân hệ & Nghiệp vụ:**
+  - [00. Tổng quan hệ thống và Quota](./docs/00_TONG_QUAN_HE_THONG_VA_QUOTA.md)
+  - [01. Phân hệ System Admin](./docs/01_ROLE_SYSTEM_ADMIN.md)
+  - [02. Phân hệ Tenant Admin](./docs/02_ROLE_TENANT_ADMIN.md)
+  - [03. Phân hệ Department Admin](./docs/03_ROLE_DEPARTMENT_ADMIN.md)
+  - [04. Phân hệ Nhân viên (Employee)](./docs/04_ROLE_EMPLOYEE.md)
+- **Kế hoạch & Báo cáo Chất lượng:**
+  - [Báo cáo Tổng hợp & Review Toàn diện](./review/00_REVIEW_TOAN_BO.md)
+  - [Báo cáo Benchmark & Tải 100k Users](./review/02_BENCHMARK.md)
+  - [Kế hoạch & Danh sách Task Chi tiết](./plan/07_DANH_SACH_TASK.md)
 
-MIT — see LICENSE file for details.
+---
+© 2026 Cloud-DMS Engineering Team. All rights reserved.
 
-## 🔗 Connect with CodingDroplets
-
-| Platform | Link |
-|----------|------|
-| 🌐 Website | https://codingdroplets.com/ |
-| 📺 YouTube | https://www.youtube.com/@CodingDroplets |
-| 🎁 Patreon | https://www.patreon.com/CodingDroplets |
-| ☕ Buy Me a Coffee | https://buymeacoffee.com/codingdroplets |
-| 💻 GitHub | http://github.com/codingdroplets/ |
-
-> **Want more samples like this?** [Support us on Patreon](https://www.patreon.com/CodingDroplets) or [buy us a coffee ☕](https://buymeacoffee.com/codingdroplets) — every bit helps keep the content coming!

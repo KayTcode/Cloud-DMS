@@ -15,7 +15,9 @@ public record FileEntryDto(
     Guid? StorageProviderId,
     string? StorageProviderName,
     string? StorageProviderType,
-    DateTime CreatedAt
+    DateTime CreatedAt,
+    Guid? DepartmentId = null,
+    string? DepartmentName = null
 );
 
 public record TenantStorageSummaryDto(
@@ -28,5 +30,8 @@ public record TenantStorageSummaryDto(
     Guid? StorageProviderId,
     string? StorageProviderName,
     string? StorageProviderType,
-    List<FileEntryDto> Files
+    List<FileEntryDto> Files,
+    int TotalCount = 0,
+    int PageNumber = 1,
+    int PageSize = 20
 );

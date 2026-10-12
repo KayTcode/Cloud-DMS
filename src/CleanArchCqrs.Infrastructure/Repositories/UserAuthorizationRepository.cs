@@ -1,4 +1,4 @@
-﻿using CleanArchCqrs.Application.Common.Interfaces.Repositorires;
+using CleanArchCqrs.Application.Common.Interfaces.Repositories;
 using CleanArchCqrs.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 using System;

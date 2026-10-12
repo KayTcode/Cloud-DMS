@@ -1,5 +1,6 @@
 using CleanArchCqrs.Application.Common.Interfaces;
 using CleanArchCqrs.Application.Common.Models;
+using static CleanArchCqrs.Application.Common.Utils.ByteFormatter;
 using CleanArchCqrs.Application.Features.SystemAdmin.DTOs;
 using CleanArchCqrs.Domain.Entities;
 using MediatR;
@@ -40,7 +41,6 @@ public class CreateUserCommandHandler : IRequestHandler<CreateUserCommand, Resul
 
         // 2. Handle Tenant Provisioning or Validation
         Tenant? tenant = null;
-        Department? department = null;
 
         if (!string.IsNullOrWhiteSpace(request.TenantName))
         {
@@ -57,11 +57,45 @@ public class CreateUserCommandHandler : IRequestHandler<CreateUserCommand, Resul
                 codeCandidate = $"{codeCandidate[..Math.Min(5, codeCandidate.Length)]}_{Guid.NewGuid().ToString("N")[..4].ToUpper()}";
             }
 
-            // 2. Chưa gán dung lượng (đặt mặc định = 0 bytes)
-            long quotaBytes = 0L;
+            // 2. Xử lý gán Storage Provider & Quota ngay khi tạo Tenant (nếu SystemAdmin chọn)
+            Guid? assignedProviderId = null;
+            long assignedQuotaBytes = 0L;
 
-            tenant = new Tenant(Guid.NewGuid(), request.TenantName.Trim(), codeCandidate, quotaBytes)
+            if (request.StorageProviderId.HasValue && request.StorageProviderId.Value != Guid.Empty)
             {
+                var provider = await _context.StorageProviders
+                    .Include(sp => sp.Tenants)
+                    .FirstOrDefaultAsync(sp => sp.Id == request.StorageProviderId.Value, cancellationToken);
+
+                if (provider == null)
+                {
+                    return Result<UserDto>.Failure($"Không tìm thấy Cloud Storage Provider với ID '{request.StorageProviderId}'.");
+                }
+
+                if (!provider.IsActive)
+                {
+                    return Result<UserDto>.Failure($"Cloud Storage Provider '{provider.Name}' hiện đang bị vô hiệu hóa.");
+                }
+
+                var totalCapacity = provider.TotalCapacityBytes > 0 ? provider.TotalCapacityBytes : (15L * 1024 * 1024 * 1024);
+                var cloudFree = Math.Max(0, totalCapacity - provider.UsedCapacityBytes);
+                var allocatedToOthers = provider.Tenants.Sum(t => t.StorageQuotaBytes);
+                var availableForThisTenant = Math.Max(0, cloudFree - allocatedToOthers);
+
+                long requestedQuota = request.StorageQuotaBytes ?? (10L * 1024 * 1024 * 1024); // Mặc định 10 GB nếu có chọn provider
+                if (requestedQuota > availableForThisTenant)
+                {
+                    return Result<UserDto>.Failure(
+                        $"Vượt quá dung lượng khả dụng của Cloud Provider '{provider.Name}'! Bạn yêu cầu {FormatBytes(requestedQuota)} nhưng Cloud chỉ còn trống {FormatBytes(availableForThisTenant)}.");
+                }
+
+                assignedProviderId = provider.Id;
+                assignedQuotaBytes = requestedQuota;
+            }
+
+            tenant = new Tenant(Guid.NewGuid(), request.TenantName.Trim(), codeCandidate, assignedQuotaBytes)
+            {
+                StorageProviderId = assignedProviderId,
                 Description = !string.IsNullOrWhiteSpace(request.Plan)
                     ? $"{request.Plan} Subscription Tenant Organization"
                     : "Tenant Organization"
@@ -81,28 +115,9 @@ public class CreateUserCommandHandler : IRequestHandler<CreateUserCommand, Resul
             }
         }
 
-        if (request.DepartmentId.HasValue)
-        {
-            department = await _context.Departments
-                .FirstOrDefaultAsync(d => d.Id == request.DepartmentId.Value, cancellationToken);
-
-            if (department == null)
-            {
-                return Result<UserDto>.Failure($"Department with ID '{request.DepartmentId}' does not exist.");
-            }
-
-            var currentTenantId = tenant?.Id ?? request.TenantId;
-            if (currentTenantId.HasValue && department.TenantId != currentTenantId.Value)
-            {
-                return Result<UserDto>.Failure($"Department '{department.Name}' does not belong to Tenant '{tenant?.Name}'.");
-            }
-        }
-
-        // 3. Create User entity with TenantAdmin role
+        // 3. Create User entity (TenantAdmin - không gắn DepartmentId)
         var effectiveTenantId = tenant?.Id ?? request.TenantId;
-        // Đúng khi thảo mãn điều kiện có tên tenant mới và để trống mật khẩu 
         var isInvitation = !string.IsNullOrWhiteSpace(request.TenantName) || string.IsNullOrEmpty(request.Password);
-        // Nếu để trống sinh ra chuỗi ngẫu nhiên 32 ký tự , còn nếu không trống thì dùng luôn 
         var initialPassword = string.IsNullOrEmpty(request.Password) ? Guid.NewGuid().ToString("N") : request.Password;
 
         var user = new User
@@ -115,28 +130,53 @@ public class CreateUserCommandHandler : IRequestHandler<CreateUserCommand, Resul
             PhoneNumber = string.IsNullOrWhiteSpace(request.PhoneNumber) ? null : request.PhoneNumber.Trim(),
             TenantId = effectiveTenantId,
             Tenant = tenant,
-            DepartmentId = request.DepartmentId,
-            Department = department,
+            DepartmentId = null, // SystemAdmin chỉ tạo TenantAdmin, không thuộc bất kỳ phòng ban nào
+            Department = null,
             IsActive = !isInvitation,
             EmailConfirmed = !isInvitation
         };
 
-        // Lấy role tenantAdmin 
-        var tenantAdminRole = await _context.Roles
-            .FirstOrDefaultAsync(r => r.Name == "TenantAdmin", cancellationToken);
-
-        // Gán role 
-        if (tenantAdminRole != null)
+        // Gán Role: Ưu tiên danh sách RoleIds client gửi lên, nếu trống thì mặc định là TenantAdmin
+        if (request.RoleIds != null && request.RoleIds.Any())
         {
-            user.UserRoles.Add(new UserRole(Guid.NewGuid(), user.Id, tenantAdminRole.Id));
+            var roles = await _context.Roles
+                .Where(r => request.RoleIds.Contains(r.Id))
+                .ToListAsync(cancellationToken);
+
+            foreach (var r in roles)
+            {
+                user.UserRoles.Add(new UserRole(Guid.NewGuid(), user.Id, r.Id));
+            }
+        }
+        else
+        {
+            var tenantAdminRole = await _context.Roles
+                .FirstOrDefaultAsync(r => r.Name == "TenantAdmin", cancellationToken);
+
+            if (tenantAdminRole != null)
+            {
+                user.UserRoles.Add(new UserRole(Guid.NewGuid(), user.Id, tenantAdminRole.Id));
+            }
         }
 
         await _context.Users.AddAsync(user, cancellationToken);
 
+        // Khởi tạo ví hạn mức UserStorageQuota (mặc định = 0 để TenantAdmin quản lý tổng thể, không chiếm Quota)
+        var userQuota = new UserStorageQuota
+        {
+            Id = Guid.NewGuid(),
+            UserId = user.Id,
+            QuotaBytes = 0L,
+            UsedBytes = 0
+        };
+        await _context.UserStorageQuotas.AddAsync(userQuota, cancellationToken);
+
         // 5. If invitation, generate token and send activation email
         if (isInvitation)
         {
+            // Hệ thống sinh token ngẫu nhiên gồm 2 chuỗi nối lại với nhau 2 x 32 ký tự = 64 ký tự 
             var tokenString = Guid.NewGuid().ToString("N") + Guid.NewGuid().ToString("N");
+            // Tạo EmailVerificationToken để lưu vào database 
             var invitationToken = new EmailVerificationToken(
                 id: Guid.NewGuid(),
                 userId: user.Id,
@@ -148,12 +188,19 @@ public class CreateUserCommandHandler : IRequestHandler<CreateUserCommand, Resul
             await _context.SaveChangesAsync(cancellationToken);
 
             // Send Email Invitation
-            await _emailService.SendTenantAdminInvitationAsync(
-                toEmail: user.Email,
-                recipientName: user.FullName,
-                tenantName: tenant?.Name ?? "Tổ chức",
-                token: tokenString,
-                cancellationToken: cancellationToken);
+            try
+            {
+                await _emailService.SendTenantAdminInvitationAsync(
+                    toEmail: user.Email,
+                    recipientName: user.FullName,
+                    tenantName: tenant?.Name ?? "Tổ chức",
+                    token: tokenString,
+                    cancellationToken: cancellationToken);
+            }
+            catch
+            {
+                // Không làm gián đoạn luồng tạo tài khoản nếu SMTP gặp sự cố ngoại tuyến
+            }
         }
         else
         {

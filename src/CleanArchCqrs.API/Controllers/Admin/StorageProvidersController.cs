@@ -4,6 +4,7 @@ using CleanArchCqrs.Application.Features.SystemAdmin.Commands.TestStorageProvide
 using CleanArchCqrs.Application.Features.SystemAdmin.DTOs;
 using CleanArchCqrs.Application.Features.SystemAdmin.Queries.GetStorageProviderAvailableQuota;
 using CleanArchCqrs.Application.Features.SystemAdmin.Queries.GetStorageProviders;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 
@@ -13,6 +14,7 @@ namespace CleanArchCqrs.API.Controllers.Admin;
 /// Quản lý các nhà cung cấp lưu trữ đám mây (Google Drive, OneDrive, Local).
 /// Dành cho System Admin kết nối và giám sát dung lượng.
 /// </summary>
+[Authorize(Policy = "storage.manage")]
 [Route("api/admin/storage-providers")]
 public class StorageProvidersController : ApiControllerBase
 {
@@ -57,15 +59,8 @@ public class StorageProvidersController : ApiControllerBase
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     public async Task<ActionResult<StorageProviderDto>> ConnectStorageProvider([FromBody] ConnectStorageProviderCommand command)
     {
-        try
-        {
-            var result = await Sender.Send(command);
-            return CreatedAtAction(nameof(GetStorageProviders), new { id = result.Id }, result);
-        }
-        catch (Exception ex)
-        {
-            return BadRequest(new { message = ex.Message });
-        }
+        var result = await Sender.Send(command);
+        return CreatedAtAction(nameof(GetStorageProviders), new { id = result.Id }, result);
     }
 
     /// <summary>

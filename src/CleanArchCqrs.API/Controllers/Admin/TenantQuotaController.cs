@@ -1,6 +1,7 @@
 using CleanArchCqrs.Application.Features.SystemAdmin.Commands.AllocateTenantStorageQuota;
 using CleanArchCqrs.Application.Features.SystemAdmin.DTOs;
 using CleanArchCqrs.Application.Features.SystemAdmin.Queries.GetTenantStorageQuota;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 
@@ -21,6 +22,7 @@ public class TenantQuotaController : ApiControllerBase
     /// <summary>
     /// Lấy thông tin hạn mức Quota và dung lượng đã dùng của Tenant.
     /// </summary>
+    [Authorize(Policy = "storage.manage")]
     [HttpGet]
     [ProducesResponseType(typeof(TenantStorageQuotaDto), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
@@ -36,6 +38,7 @@ public class TenantQuotaController : ApiControllerBase
     /// <summary>
     /// Cấp / Cập nhật Quota và gán Cloud Provider cho Tenant.
     /// </summary>
+    [Authorize(Policy = "storage.manage")]
     [HttpPut]
     [ProducesResponseType(typeof(TenantStorageQuotaDto), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
@@ -43,27 +46,12 @@ public class TenantQuotaController : ApiControllerBase
         Guid tenantId, 
         [FromBody] AllocateQuotaRequest request)
     {
-        try
-        {
-            var command = new AllocateTenantStorageQuotaCommand(
-                tenantId, 
-                request.StorageProviderId, 
-                request.QuotaBytes);
+        var command = new AllocateTenantStorageQuotaCommand(
+            tenantId, 
+            request.StorageProviderId, 
+            request.QuotaBytes);
 
-            var result = await Sender.Send(command);
-            return Ok(result);
-        }
-        catch (InvalidOperationException ex)
-        {
-            return BadRequest(new { message = ex.Message });
-        }
-        catch (KeyNotFoundException ex)
-        {
-            return NotFound(new { message = ex.Message });
-        }
-        catch (Exception ex)
-        {
-            return BadRequest(new { message = $"Lỗi khi cấp Quota: {ex.Message}" });
-        }
+        var result = await Sender.Send(command);
+        return Ok(result);
     }
 }

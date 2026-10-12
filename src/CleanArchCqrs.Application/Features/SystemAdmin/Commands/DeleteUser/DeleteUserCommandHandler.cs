@@ -42,13 +42,19 @@ public class DeleteUserCommandHandler : IRequestHandler<DeleteUserCommand, Resul
             }
         }
 
-        // Remove UserRoles first
-        if (user.UserRoles.Any())
+        // Thực hiện Soft-Delete: Vô hiệu hóa tài khoản để tránh vi phạm khóa ngoại Restrict (AuditLogs, FileEntries)
+        user.IsActive = false;
+
+        // Thu hồi toàn bộ RefreshToken của người dùng
+        var refreshTokens = await _context.RefreshTokens
+            .Where(rt => rt.UserId == user.Id)
+            .ToListAsync(cancellationToken);
+
+        if (refreshTokens.Any())
         {
-            _context.UserRoles.RemoveRange(user.UserRoles);
+            _context.RefreshTokens.RemoveRange(refreshTokens);
         }
 
-        _context.Users.Remove(user);
         await _context.SaveChangesAsync(cancellationToken);
 
         return Result.Success();

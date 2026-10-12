@@ -1,6 +1,7 @@
 using CleanArchCqrs.Application.Common.Models;
 using CleanArchCqrs.Application.Features.SystemAdmin.DTOs;
 using CleanArchCqrs.Application.Features.TenantAdmin.Commands.CreateDepartmentAdmin;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 
@@ -18,6 +19,7 @@ public class DepartmentAdminsController : ApiControllerBase
     /// </summary>
     /// <param name="tenantId">The ID of the Tenant.</param>
     /// <param name="request">The creation payload.</param>
+    [Authorize(Policy = "user.create")]
     [HttpPost]
     [ProducesResponseType(typeof(Result<UserDto>), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(Result), StatusCodes.Status400BadRequest)]
@@ -33,7 +35,9 @@ public class DepartmentAdminsController : ApiControllerBase
             Password = request.Password,
             FirstName = request.FirstName,
             LastName = request.LastName,
-            PhoneNumber = request.PhoneNumber
+            PhoneNumber = request.PhoneNumber,
+            StorageQuotaBytes = request.StorageQuotaBytes,
+            AdminPersonalQuotaBytes = request.AdminPersonalQuotaBytes
         };
 
         var result = await Sender.Send(command);
@@ -43,8 +47,10 @@ public class DepartmentAdminsController : ApiControllerBase
 
 public record CreateDepartmentAdminRequest(
     string Email,
-    string Password,
     string FirstName,
     string LastName,
-    string? PhoneNumber,
-    Guid? DepartmentId = null);
+    string? Password = null,
+    string? PhoneNumber = null,
+    Guid? DepartmentId = null,
+    long? StorageQuotaBytes = null,
+    long? AdminPersonalQuotaBytes = null);
