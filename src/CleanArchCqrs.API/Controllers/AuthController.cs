@@ -120,7 +120,19 @@ public class AuthController : ControllerBase
                 return Redirect(safeReturnUrl);
             }
 
-            return Ok(new { success = true, message = "Google login thành công.", userId = result.Login.UserId, email = result.Login.Email });
+            return Ok(new
+            {
+                accessToken = result.Login.AccessToken,
+                expiresAt = result.Login.ExpiresAt,
+                userId = result.Login.UserId,
+                email = result.Login.Email,
+                fullName = result.Login.FullName,
+                role = result.Login.Role,
+                tenantId = result.Login.TenantId,
+                permissions = result.Login.Permissions,
+                refreshToken = result.Login.RefreshToken,
+                refreshTokenExpiresAt = result.Login.RefreshTokenExpiresAt
+            });
         }
         catch (UnauthorizedAccessException ex)
         {
