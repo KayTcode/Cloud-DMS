@@ -1,5 +1,6 @@
 using CleanArchCqrs.Application.Common.Interfaces;
 using CleanArchCqrs.Application.Features.Files.Commands.DeleteFile;
+using CleanArchCqrs.Application.Features.Files.Commands.PermanentDeleteFile;
 using CleanArchCqrs.Domain.Entities;
 using CleanArchCqrs.Tests.Common;
 using FluentAssertions;
@@ -102,23 +103,46 @@ public class QuotaConcurrencyAndRefundTests
             _storageFactoryMock.Object,
             _currentUserServiceMock.Object);
 
-        // Act: Delete file
-        var result = await handler.Handle(new DeleteFileCommand(fileEntry.Id), CancellationToken.None);
+        // Act 1: Soft Delete file (chuyển vào thùng rác)
+        var softDeleteResult = await handler.Handle(new DeleteFileCommand(fileEntry.Id), CancellationToken.None);
 
-        // Assert
-        result.IsSuccess.Should().BeTrue();
+        // Assert 1: Đã xóa mềm, nhưng Quota CHƯA bị giải phóng (giữ nguyên để tránh lạm dụng dung lượng)
+        softDeleteResult.IsSuccess.Should().BeTrue();
+
+        var inTrashUserQuota = await context.UserStorageQuotas.FirstAsync(q => q.Id == userQuota.Id);
+        var inTrashDept = await context.Departments.FirstAsync(d => d.Id == department.Id);
+        var inTrashTenant = await context.Tenants.FirstAsync(t => t.Id == tenant.Id);
+        var inTrashProvider = await context.StorageProviders.FirstAsync(p => p.Id == provider.Id);
+        var inTrashFile = await context.FileEntries.FirstAsync(f => f.Id == fileEntry.Id);
+
+        inTrashFile.IsDeleted.Should().BeTrue();
+        inTrashFile.DeletedAt.Should().NotBeNull();
+        inTrashUserQuota.UsedBytes.Should().Be(50000, "xóa mềm không được trừ quota ngay");
+        inTrashDept.StorageUsedBytes.Should().Be(50000);
+        inTrashTenant.StorageUsedBytes.Should().Be(50000);
+        inTrashProvider.UsedCapacityBytes.Should().Be(50000);
+
+        // Act 2: Permanent Delete file (xóa vĩnh viễn)
+        var permHandler = new PermanentDeleteFileCommandHandler(
+            context,
+            _storageFactoryMock.Object,
+            _currentUserServiceMock.Object);
+
+        var permResult = await permHandler.Handle(new PermanentDeleteFileCommand(fileEntry.Id), CancellationToken.None);
+
+        // Assert 2: Xóa vĩnh viễn -> Quota được hoàn lại trên cả 4 cấp độ và file bị xóa khỏi DB
+        permResult.IsSuccess.Should().BeTrue();
 
         var reloadedUserQuota = await context.UserStorageQuotas.FirstAsync(q => q.Id == userQuota.Id);
         var reloadedDept = await context.Departments.FirstAsync(d => d.Id == department.Id);
         var reloadedTenant = await context.Tenants.FirstAsync(t => t.Id == tenant.Id);
         var reloadedProvider = await context.StorageProviders.FirstAsync(p => p.Id == provider.Id);
-        var reloadedFile = await context.FileEntries.FirstAsync(f => f.Id == fileEntry.Id);
+        var deletedFileRecord = await context.FileEntries.FirstOrDefaultAsync(f => f.Id == fileEntry.Id);
 
-        // Quota refunded on all 4 levels
         reloadedUserQuota.UsedBytes.Should().Be(50000 - fileSize);
         reloadedDept.StorageUsedBytes.Should().Be(50000 - fileSize);
         reloadedTenant.StorageUsedBytes.Should().Be(50000 - fileSize);
         reloadedProvider.UsedCapacityBytes.Should().Be(50000 - fileSize);
-        reloadedFile.IsDeleted.Should().BeTrue();
+        deletedFileRecord.Should().BeNull();
     }
 }
