@@ -166,6 +166,7 @@ public class CreateUserCommandHandler : IRequestHandler<CreateUserCommand, Resul
         {
             Id = Guid.NewGuid(),
             UserId = user.Id,
+            DepartmentId = null,
             QuotaBytes = 0L,
             UsedBytes = 0
         };

@@ -42,8 +42,9 @@ public class DepartmentConfiguration : IEntityTypeConfiguration<Department>
             .OnDelete(DeleteBehavior.Cascade);
 
         builder.HasMany(d => d.UserStorageQuotas)
-            .WithOne(quota => quota.Department)
+            .WithOne(quota => quota.Department!)
             .HasForeignKey(quota => quota.DepartmentId)
-            .OnDelete(DeleteBehavior.Restrict);
+            .OnDelete(DeleteBehavior.Restrict)
+            .IsRequired(false);
     }
 }

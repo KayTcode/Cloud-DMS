@@ -11,7 +11,7 @@ namespace CleanArchCqrs.Application.Users.Commands.AcceptInvitation;
 public record AcceptInvitationCommand(
     string Token,
     string Email,
-    string NewPassword
+    string? NewPassword = null
 ) : IRequest<LoginResponseDto>;
 
 public class AcceptInvitationCommandValidator : AbstractValidator<AcceptInvitationCommand>
@@ -25,10 +25,12 @@ public class AcceptInvitationCommandValidator : AbstractValidator<AcceptInvitati
             .NotEmpty().WithMessage("Email không được để trống.")
             .EmailAddress().WithMessage("Định dạng email không hợp lệ.");
 
-        RuleFor(x => x.NewPassword)
-            .NotEmpty().WithMessage("Mật khẩu mới không được để trống.")
-            .MinimumLength(6).WithMessage("Mật khẩu phải có độ dài tối thiểu 6 ký tự.")
-            .MaximumLength(100).WithMessage("Mật khẩu không được vượt quá 100 ký tự.");
+        When(x => !string.IsNullOrEmpty(x.NewPassword), () =>
+        {
+            RuleFor(x => x.NewPassword!)
+                .MinimumLength(6).WithMessage("Mật khẩu phải có độ dài tối thiểu 6 ký tự.")
+                .MaximumLength(100).WithMessage("Mật khẩu không được vượt quá 100 ký tự.");
+        });
     }
 }
 
@@ -78,8 +80,11 @@ public class AcceptInvitationCommandHandler : IRequestHandler<AcceptInvitationCo
 
         var user = tokenRecord.User;
 
-        // 1. Update user password and activate account
-        user.ChangePassword(_passwordHasher.Hash(request.NewPassword));
+        // 1. Update user password (if provided) and activate account
+        if (!string.IsNullOrWhiteSpace(request.NewPassword))
+        {
+            user.ChangePassword(_passwordHasher.Hash(request.NewPassword));
+        }
         user.Active();
         user.EmailConfirmed = true;
 
