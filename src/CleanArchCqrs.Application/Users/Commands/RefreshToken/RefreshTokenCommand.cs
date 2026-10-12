@@ -1,5 +1,5 @@
 using CleanArchCqrs.Application.Common.Interfaces;
-using CleanArchCqrs.Application.Common.Interfaces.Repositorires;
+using CleanArchCqrs.Application.Common.Interfaces.Repositories;
 using CleanArchCqrs.Application.Common.Models;
 using CleanArchCqrs.Application.Users.DTOs;
 using CleanArchCqrs.Domain.Entities;

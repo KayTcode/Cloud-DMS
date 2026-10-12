@@ -26,7 +26,13 @@ public class FolderConfiguration : IEntityTypeConfiguration<Folder>
             .HasForeignKey(f => f.ParentFolderId)
             .OnDelete(DeleteBehavior.Restrict);
 
+        builder.HasOne(f => f.Department)
+            .WithMany(d => d.Folders)
+            .HasForeignKey(f => f.DepartmentId)
+            .OnDelete(DeleteBehavior.Restrict);
+
         builder.HasIndex(f => f.TenantId);
+        builder.HasIndex(f => f.DepartmentId);
         builder.HasIndex(f => f.ParentFolderId);
         builder.HasIndex(f => new { f.TenantId, f.ParentFolderId, f.Name })
             .IsUnique();

@@ -36,7 +36,6 @@ public class AppDbContext : DbContext, IApplicationDbContext
     public DbSet<FileEntry> FileEntries => Set<FileEntry>();
     public DbSet<Folder> Folders => Set<Folder>();
     public DbSet<CleanArchCqrs.Domain.Entities.FileShare> FileShares => Set<CleanArchCqrs.Domain.Entities.FileShare>();
-    public DbSet<Product> Products => Set<Product>();
     public DbSet<EmailVerificationToken> EmailVerificationTokens => Set<EmailVerificationToken>();
     public DbSet<UserStorageQuota> UserStorageQuotas => Set<UserStorageQuota>();
     public DbSet<AuthorizationOperation> AuthorizationOperations => Set<AuthorizationOperation>();

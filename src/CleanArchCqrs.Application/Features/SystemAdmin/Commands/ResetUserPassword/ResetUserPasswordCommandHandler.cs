@@ -33,6 +33,16 @@ public class ResetUserPasswordCommandHandler : IRequestHandler<ResetUserPassword
         user.PasswordHash = _passwordHasher.HashPassword(request.NewPassword);
         user.UpdatedAt = DateTime.UtcNow;
 
+        // Thu hồi toàn bộ Refresh Token của user khi reset mật khẩu (P3-02 / BUG-18)
+        var activeTokens = await _context.RefreshTokens
+            .Where(t => t.UserId == user.Id && t.RevokedAt == null)
+            .ToListAsync(cancellationToken);
+
+        foreach (var token in activeTokens)
+        {
+            token.Revoke("password_reset");
+        }
+
         await _context.SaveChangesAsync(cancellationToken);
 
         return Result.Success();

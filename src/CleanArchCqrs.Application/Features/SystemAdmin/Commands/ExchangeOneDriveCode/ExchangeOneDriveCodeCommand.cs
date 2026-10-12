@@ -1,6 +1,7 @@
 using CleanArchCqrs.Application.Common.Interfaces;
 using CleanArchCqrs.Domain.Entities;
 using MediatR;
+using Microsoft.EntityFrameworkCore;
 using System.Text.Json;
 
 namespace CleanArchCqrs.Application.Features.SystemAdmin.Commands.ExchangeOneDriveCode;
@@ -15,9 +16,6 @@ public record ExchangeOneDriveCodeCommand(
 public record ExchangeOneDriveCodeResult(
     bool Success,
     string Message,
-    string? RefreshToken = null,
-    string? AccessToken = null,
-    string? ConfigJson = null,
     long TotalCapacityBytes = 0,
     long UsedCapacityBytes = 0,
     long AvailableCapacityBytes = 0,
@@ -27,11 +25,18 @@ public record ExchangeOneDriveCodeResult(
 public class ExchangeOneDriveCodeCommandHandler : IRequestHandler<ExchangeOneDriveCodeCommand, ExchangeOneDriveCodeResult>
 {
     private readonly IStorageServiceFactory _storageServiceFactory;
+    private readonly IApplicationDbContext _context;
+    private readonly IAesEncryptionService _aesEncryptionService;
     private static readonly HttpClient _httpClient = new();
 
-    public ExchangeOneDriveCodeCommandHandler(IStorageServiceFactory storageServiceFactory)
+    public ExchangeOneDriveCodeCommandHandler(
+        IStorageServiceFactory storageServiceFactory,
+        IApplicationDbContext context,
+        IAesEncryptionService aesEncryptionService)
     {
         _storageServiceFactory = storageServiceFactory;
+        _context = context;
+        _aesEncryptionService = aesEncryptionService;
     }
 
     public async Task<ExchangeOneDriveCodeResult> Handle(ExchangeOneDriveCodeCommand request, CancellationToken cancellationToken)
@@ -92,12 +97,41 @@ public class ExchangeOneDriveCodeCommandHandler : IRequestHandler<ExchangeOneDri
             var quota = await storageService.GetProviderQuotaAsync(cancellationToken);
             sw.Stop();
 
+            // 4. Lưu an toàn trực tiếp vào CSDL với mã hóa AES (tuyệt đối không gửi secret/token về trình duyệt)
+            var encryptedConfig = _aesEncryptionService.Encrypt(configJson);
+            var existingProvider = await _context.StorageProviders
+                .FirstOrDefaultAsync(p => p.Type == StorageProviderType.OneDrive && p.Name == "Microsoft OneDrive", cancellationToken);
+
+            if (existingProvider != null)
+            {
+                existingProvider.ConfigEncrypted = encryptedConfig;
+                existingProvider.TotalCapacityBytes = quota.TotalCapacityBytes;
+                existingProvider.UsedCapacityBytes = quota.UsedCapacityBytes;
+                existingProvider.IsActive = true;
+                existingProvider.LastSyncAt = DateTime.UtcNow;
+            }
+            else
+            {
+                var newProvider = new StorageProvider
+                {
+                    Id = Guid.NewGuid(),
+                    Name = "Microsoft OneDrive",
+                    Type = StorageProviderType.OneDrive,
+                    ConfigEncrypted = encryptedConfig,
+                    TotalCapacityBytes = quota.TotalCapacityBytes,
+                    UsedCapacityBytes = quota.UsedCapacityBytes,
+                    IsActive = true,
+                    CreatedAt = DateTime.UtcNow,
+                    LastSyncAt = DateTime.UtcNow
+                };
+                _context.StorageProviders.Add(newProvider);
+            }
+
+            await _context.SaveChangesAsync(cancellationToken);
+
             return new ExchangeOneDriveCodeResult(
                 Success: true,
-                Message: "Đăng nhập và kết nối OneDrive thành công!",
-                RefreshToken: refreshToken,
-                AccessToken: accessToken,
-                ConfigJson: configJson,
+                Message: "Đăng nhập, kiểm tra và kết nối OneDrive thành công!",
                 TotalCapacityBytes: quota.TotalCapacityBytes,
                 UsedCapacityBytes: quota.UsedCapacityBytes,
                 AvailableCapacityBytes: quota.AvailableCapacityBytes,

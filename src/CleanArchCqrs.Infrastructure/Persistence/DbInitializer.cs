@@ -15,17 +15,26 @@ namespace CleanArchCqrs.Infrastructure.Persistence
         public static async Task SeedDefaultDataAsync(
             AppDbContext context,
             IPasswordHasher passwordHasher,
-            ILogger logger)
+            ILogger logger,
+            bool isDevelopment = false)
         {
             try
             {
                 await SeedPermissionsAsync(context, logger);
                 await SeedRolesAsync(context, logger);
                 await SeedRolePermissionsAsync(context, logger);
-                await SeedTenantsAndUsersAsync(context, passwordHasher, logger);
 
-                logger.LogInformation(
-                    "Default RBAC data & demo accounts seeded successfully.");
+                if (isDevelopment)
+                {
+                    await SeedTenantsAndUsersAsync(context, passwordHasher, logger);
+                    logger.LogInformation(
+                        "Default RBAC data & demo accounts seeded successfully (Development mode).");
+                }
+                else
+                {
+                    logger.LogInformation(
+                        "Default RBAC data seeded successfully (Production mode - demo accounts skipped).");
+                }
             }
             catch (Exception ex)
             {
@@ -306,6 +315,22 @@ namespace CleanArchCqrs.Infrastructure.Persistence
             IPasswordHasher passwordHasher,
             ILogger logger)
         {
+            // 0. Seed Default Storage Provider if none exists
+            var defaultProvider = await context.StorageProviders.FirstOrDefaultAsync(p => p.Type == StorageProviderType.Local);
+            if (defaultProvider == null)
+            {
+                defaultProvider = new StorageProvider(
+                    name: "Default Local Storage",
+                    type: StorageProviderType.Local,
+                    configEncrypted: "{}",
+                    totalCapacityBytes: 500L * 1024 * 1024 * 1024, // 500 GB
+                    usedCapacityBytes: 0L,
+                    rootFolderId: "App_Data/Storage");
+
+                await context.StorageProviders.AddAsync(defaultProvider);
+                await context.SaveChangesAsync();
+            }
+
             // 1. Seed Demo Tenant if none exists
             var acmeTenant = await context.Tenants.FirstOrDefaultAsync(t => t.Code == "ACME");
             if (acmeTenant == null)
@@ -316,34 +341,20 @@ namespace CleanArchCqrs.Infrastructure.Persistence
                     "ACME",
                     100L * 1024 * 1024 * 1024)
                 {
-                    Description = "Global Enterprise Demo Tenant"
+                    Description = "Global Enterprise Demo Tenant",
+                    StorageProviderId = defaultProvider.Id
                 };
                 await context.Tenants.AddAsync(acmeTenant);
                 await context.SaveChangesAsync();
             }
-
-            // 2. Seed Demo Department
-            var itDept = await context.Departments.FirstOrDefaultAsync(d => d.TenantId == acmeTenant.Id && d.Code == "IT");
-            if (itDept == null)
+            else if (!acmeTenant.StorageProviderId.HasValue)
             {
-                itDept = new Department(
-                    Guid.NewGuid(),
-                    acmeTenant.Id,
-                    "Information Technology",
-                    "IT")
-                {
-                    Description = "Core Engineering and IT Infrastructure"
-                };
-                await context.Departments.AddAsync(itDept);
+                acmeTenant.StorageProviderId = defaultProvider.Id;
                 await context.SaveChangesAsync();
             }
 
-            // Roles
             var sysAdminRole = await context.Roles.FirstOrDefaultAsync(r => r.Name == "SystemAdmin");
             var tenantAdminRole = await context.Roles.FirstOrDefaultAsync(r => r.Name == "TenantAdmin");
-            var deptAdminRole = await context.Roles.FirstOrDefaultAsync(r => r.Name == "DepartmentAdmin") 
-                                ?? await context.Roles.FirstOrDefaultAsync(r => r.Name == "Manager");
-            var employeeRole = await context.Roles.FirstOrDefaultAsync(r => r.Name == "Employee");
 
             // 3. Seed System Admin Account
             var sysAdminEmail = "admin@clouddms.com";
@@ -370,7 +381,7 @@ namespace CleanArchCqrs.Infrastructure.Persistence
                 }
             }
 
-            // 4. Seed Tenant Admin Account
+            // 4. Seed Tenant Admin Account (không gắn phòng ban ban đầu)
             var tenantAdminEmail = "tenant@acme.com";
             var tenantAdminUser = await context.Users.FirstOrDefaultAsync(u => u.Email == tenantAdminEmail);
             if (tenantAdminUser == null)
@@ -378,7 +389,7 @@ namespace CleanArchCqrs.Infrastructure.Persistence
                 var passwordHash = passwordHasher.Hash("Tenant@123");
                 tenantAdminUser = new User(
                     tenantId: acmeTenant.Id,
-                    departmentId: itDept.Id,
+                    departmentId: null,
                     email: tenantAdminEmail,
                     passwordHash: passwordHash,
                     firstName: "Alice",
@@ -395,57 +406,21 @@ namespace CleanArchCqrs.Infrastructure.Persistence
                 }
             }
 
-            // 5. Seed Department Admin Account
-            var deptAdminEmail = "deptadmin@acme.com";
-            var deptAdminUser = await context.Users.FirstOrDefaultAsync(u => u.Email == deptAdminEmail);
-            if (deptAdminUser == null)
+            // Ensure Tenant Admin has UserStorageQuota
+            var tenantAdminQuota = await context.UserStorageQuotas.FirstOrDefaultAsync(q => q.UserId == tenantAdminUser.Id);
+            if (tenantAdminQuota == null)
             {
-                var passwordHash = passwordHasher.Hash("DeptAdmin@123");
-                deptAdminUser = new User(
-                    tenantId: acmeTenant.Id,
-                    departmentId: itDept.Id,
-                    email: deptAdminEmail,
-                    passwordHash: passwordHash,
-                    firstName: "David",
-                    lastName: "Department Lead",
-                    phoneNumber: "+84 912 345 678"
-                );
-                await context.Users.AddAsync(deptAdminUser);
-                await context.SaveChangesAsync();
-
-                if (deptAdminRole != null)
+                await context.UserStorageQuotas.AddAsync(new UserStorageQuota
                 {
-                    await context.UserRoles.AddAsync(new UserRole(Guid.NewGuid(), deptAdminUser.Id, deptAdminRole.Id));
-                    await context.SaveChangesAsync();
-                }
+                    Id = Guid.NewGuid(),
+                    UserId = tenantAdminUser.Id,
+                    QuotaBytes = 0L,
+                    UsedBytes = 0L
+                });
+                await context.SaveChangesAsync();
             }
 
-            // 6. Seed Employee / User Account
-            var userEmail = "user@acme.com";
-            var normalUser = await context.Users.FirstOrDefaultAsync(u => u.Email == userEmail);
-            if (normalUser == null)
-            {
-                var passwordHash = passwordHasher.Hash("User@123");
-                normalUser = new User(
-                    tenantId: acmeTenant.Id,
-                    departmentId: itDept.Id,
-                    email: userEmail,
-                    passwordHash: passwordHash,
-                    firstName: "Alex",
-                    lastName: "Mercer",
-                    phoneNumber: "+84 914 829 901"
-                );
-                await context.Users.AddAsync(normalUser);
-                await context.SaveChangesAsync();
-
-                if (employeeRole != null)
-                {
-                    await context.UserRoles.AddAsync(new UserRole(Guid.NewGuid(), normalUser.Id, employeeRole.Id));
-                    await context.SaveChangesAsync();
-                }
-            }
-
-            logger.LogInformation("Demo Tenants, Departments, and 4 Role accounts seeded successfully.");
+            logger.LogInformation("Demo StorageProvider, Tenants, Departments, Quotas, and 4 Role accounts seeded successfully.");
         }
     }
 }

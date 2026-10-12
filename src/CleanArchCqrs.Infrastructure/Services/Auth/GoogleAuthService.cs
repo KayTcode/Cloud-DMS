@@ -5,7 +5,7 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json.Serialization;
 using CleanArchCqrs.Application.Common.Interfaces;
-using CleanArchCqrs.Application.Common.Interfaces.Repositorires;
+using CleanArchCqrs.Application.Common.Interfaces.Repositories;
 using CleanArchCqrs.Application.Users.DTOs;
 using CleanArchCqrs.Domain.Entities;
 using Microsoft.EntityFrameworkCore;

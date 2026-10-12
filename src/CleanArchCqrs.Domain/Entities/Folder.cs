@@ -10,7 +10,11 @@ public class Folder : BaseEntity
 
     public string Name { get; set; } = string.Empty;
 
+    public Guid? DepartmentId { get; set; }
+
     public Tenant Tenant { get; set; } = null!;
+
+    public Department? Department { get; set; }
 
     public Folder? ParentFolder { get; set; }
 

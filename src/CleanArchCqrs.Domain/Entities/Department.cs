@@ -33,9 +33,15 @@ public class Department : BaseEntity
             : throw new ArgumentOutOfRangeException(nameof(value), "Used bytes cannot be negative.");
     }
 
+    // Compatibility aliases used by the department-admin endpoints retained from main.
+    public long StorageQuotaBytes { get => QuotaBytes; set => QuotaBytes = value; }
+    public long StorageUsedBytes { get => UsedBytes; set => UsedBytes = value; }
+
     // Navigation properties
     public ICollection<User> Users { get; set; } = new List<User>();
     public ICollection<UserStorageQuota> UserStorageQuotas { get; set; } = new List<UserStorageQuota>();
+    public ICollection<Folder> Folders { get; set; } = new List<Folder>();
+    public ICollection<FileEntry> Files { get; set; } = new List<FileEntry>();
 
     public Department() { }
 
@@ -47,3 +53,4 @@ public class Department : BaseEntity
         IsActive = true;
     }
 }
+

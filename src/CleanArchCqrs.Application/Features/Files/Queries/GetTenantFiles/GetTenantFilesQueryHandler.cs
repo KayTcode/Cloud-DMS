@@ -80,7 +80,9 @@ public class GetTenantFilesQueryHandler : IRequestHandler<GetTenantFilesQuery, R
                 f.StorageProviderId,
                 f.StorageProvider != null ? f.StorageProvider.Name : null,
                 f.StorageProvider != null ? f.StorageProvider.Type.ToString() : null,
-                f.CreatedAt
+                f.CreatedAt,
+                null,
+                null
             ))
             .ToListAsync(cancellationToken);
 
@@ -105,3 +107,4 @@ public class GetTenantFilesQueryHandler : IRequestHandler<GetTenantFilesQuery, R
         return Result<TenantStorageSummaryDto>.Success(summary);
     }
 }
+

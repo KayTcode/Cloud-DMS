@@ -45,23 +45,40 @@ public class AesEncryptionService : IAesEncryptionService
 
     public string Decrypt(string cipherText)
     {
-        if (string.IsNullOrEmpty(cipherText))
+        if (string.IsNullOrWhiteSpace(cipherText))
             return string.Empty;
 
-        var fullCipher = Convert.FromBase64String(cipherText);
+        var trimmed = cipherText.Trim();
+        // If it's already plain JSON or non-base64 text, return as-is
+        if ((trimmed.StartsWith("{") && trimmed.EndsWith("}")) || (trimmed.StartsWith("[") && trimmed.EndsWith("]")))
+        {
+            return trimmed;
+        }
 
-        using var aes = Aes.Create();
-        aes.Key = _key;
+        try
+        {
+            var fullCipher = Convert.FromBase64String(cipherText);
+            if (fullCipher.Length < 16)
+                return cipherText;
 
-        var iv = new byte[aes.BlockSize / 8];
-        Array.Copy(fullCipher, 0, iv, 0, iv.Length);
-        aes.IV = iv;
+            using var aes = Aes.Create();
+            aes.Key = _key;
 
-        using var decryptor = aes.CreateDecryptor(aes.Key, aes.IV);
-        using var ms = new MemoryStream(fullCipher, iv.Length, fullCipher.Length - iv.Length);
-        using var cs = new CryptoStream(ms, decryptor, CryptoStreamMode.Read);
-        using var sr = new StreamReader(cs);
+            var iv = new byte[aes.BlockSize / 8];
+            Array.Copy(fullCipher, 0, iv, 0, iv.Length);
+            aes.IV = iv;
 
-        return sr.ReadToEnd();
+            using var decryptor = aes.CreateDecryptor(aes.Key, aes.IV);
+            using var ms = new MemoryStream(fullCipher, iv.Length, fullCipher.Length - iv.Length);
+            using var cs = new CryptoStream(ms, decryptor, CryptoStreamMode.Read);
+            using var sr = new StreamReader(cs);
+
+            return sr.ReadToEnd();
+        }
+        catch
+        {
+            // Fallback to plain text on any format/decryption failure
+            return cipherText;
+        }
     }
 }

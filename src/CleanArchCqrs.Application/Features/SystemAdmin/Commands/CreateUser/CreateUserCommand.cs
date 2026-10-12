@@ -15,5 +15,6 @@ public record CreateUserCommand : IRequest<Result<UserDto>>
     public string? Plan { get; init; }
     public List<Guid> RoleIds { get; init; } = new();
     public Guid? TenantId { get; init; }
-    public Guid? DepartmentId { get; init; }
+    public Guid? StorageProviderId { get; init; }
+    public long? StorageQuotaBytes { get; init; }
 }

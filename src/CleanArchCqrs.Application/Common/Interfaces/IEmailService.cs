@@ -9,6 +9,14 @@ public interface IEmailService
         string token,
         CancellationToken cancellationToken = default);
 
+    Task SendDepartmentAdminInvitationAsync(
+        string toEmail,
+        string recipientName,
+        string tenantName,
+        string? departmentName,
+        string token,
+        CancellationToken cancellationToken = default);
+
     Task SendUserActivationEmailAsync(
         string toEmail,
         string recipientName,

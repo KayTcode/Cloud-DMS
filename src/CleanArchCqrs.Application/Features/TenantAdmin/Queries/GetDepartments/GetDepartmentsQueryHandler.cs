@@ -21,6 +21,7 @@ public class GetDepartmentsQueryHandler : IRequestHandler<GetDepartmentsQuery, R
     {
         var departments = await _context.Departments
             .AsNoTracking()
+            .AsSplitQuery()
             .Where(d => d.TenantId == request.TenantId)
             .Include(d => d.Users)
                 .ThenInclude(u => u.UserRoles)

@@ -1,4 +1,4 @@
-﻿using CleanArchCqrs.Application.Common.Interfaces.Repositorires;
+using CleanArchCqrs.Application.Common.Interfaces.Repositories;
 using CleanArchCqrs.Infrastructure.Persistence;
 using CleanArchCqrs.Domain.Entities;
 using Microsoft.EntityFrameworkCore;
@@ -55,6 +55,11 @@ namespace CleanArchCqrs.Infrastructure.Repositories
             .FirstOrDefaultAsync(
                 x => x.Id == id,
                 cancellationToken);
+        }
+
+        public void Update(User user)
+        {
+            _context.Users.Update(user);
         }
     }
 }

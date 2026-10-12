@@ -17,7 +17,6 @@ public interface IApplicationDbContext
     DbSet<FileEntry> FileEntries { get; }
     DbSet<Folder> Folders { get; }
     DbSet<CleanArchCqrs.Domain.Entities.FileShare> FileShares { get; }
-    DbSet<Product> Products { get; }
     DbSet<EmailVerificationToken> EmailVerificationTokens { get; }
     DbSet<UserStorageQuota> UserStorageQuotas { get; }
     DbSet<AuthorizationOperation> AuthorizationOperations { get; }
@@ -25,6 +24,9 @@ public interface IApplicationDbContext
     DbSet<AuthorizationScope> AuthorizationScopes { get; }
     DbSet<QuotaReservation> QuotaReservations { get; }
     DbSet<StorageProvider> StorageProviders { get; }
+
+    Microsoft.EntityFrameworkCore.Infrastructure.DatabaseFacade Database { get; }
+    Microsoft.EntityFrameworkCore.ChangeTracking.ChangeTracker ChangeTracker { get; }
 
     Task<int> SaveChangesAsync(CancellationToken cancellationToken = default);
 }

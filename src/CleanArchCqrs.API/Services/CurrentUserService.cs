@@ -41,6 +41,17 @@ public class CurrentUserService : ICurrentUserService
         }
     }
 
+    public Guid? DepartmentId
+    {
+        get
+        {
+            var deptClaim = User?.FindFirst("departmentId")?.Value 
+                            ?? User?.FindFirst("DepartmentId")?.Value;
+
+            return Guid.TryParse(deptClaim, out var guid) ? guid : null;
+        }
+    }
+
     public string? Email => User?.FindFirst(ClaimTypes.Email)?.Value ?? User?.FindFirst("email")?.Value;
 
     public string? Role => User?.FindFirst(ClaimTypes.Role)?.Value ?? User?.FindFirst("role")?.Value;

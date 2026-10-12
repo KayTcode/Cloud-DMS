@@ -1,4 +1,4 @@
-﻿using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.Extensions.Options;
 
 namespace CleanArchCqrs.API.Authorization
@@ -8,15 +8,15 @@ namespace CleanArchCqrs.API.Authorization
         public PermissionPolicyProvider(IOptions<AuthorizationOptions> options) : base(options)
         {
         }
-        public override Task<AuthorizationPolicy?> GetPolicyAsync(
-        string policyName)
+        public override async Task<AuthorizationPolicy?> GetPolicyAsync(string policyName)
         {
-            var policy = new AuthorizationPolicyBuilder()
+            var existing = await base.GetPolicyAsync(policyName);
+            if (existing != null) return existing;
+
+            return new AuthorizationPolicyBuilder()
                 .RequireAuthenticatedUser()
                 .RequireClaim("permission", policyName)
                 .Build();
-
-            return Task.FromResult<AuthorizationPolicy?>(policy);
         }
     }
 }

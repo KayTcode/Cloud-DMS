@@ -56,6 +56,16 @@ public class ChangeUserStatusCommandHandler : IRequestHandler<ChangeUserStatusCo
         else
         {
             user.Inactive();
+
+            // Thu hồi toàn bộ Refresh Token của user khi bị vô hiệu hóa (P3-02 / BUG-18)
+            var activeTokens = await _context.RefreshTokens
+                .Where(t => t.UserId == user.Id && t.RevokedAt == null)
+                .ToListAsync(cancellationToken);
+
+            foreach (var token in activeTokens)
+            {
+                token.Revoke("user_deactivated");
+            }
         }
 
         if (statusChanged)

@@ -10,6 +10,7 @@ namespace CleanArchCqrs.API.Controllers;
 /// Universal Base API Controller.
 /// Encapsulates MediatR sender and standardized Result mapping handlers.
 /// </summary>
+[Authorize]
 [ApiController]
 [Authorize]
 [Route("api/[controller]")]

@@ -10,10 +10,14 @@ public class GetUsersWithPaginationQueryHandler
     : IRequestHandler<GetUsersWithPaginationQuery, Result<PaginatedList<UserDto>>>
 {
     private readonly IApplicationDbContext _context;
+    private readonly ICurrentUserService _currentUserService;
 
-    public GetUsersWithPaginationQueryHandler(IApplicationDbContext context)
+    public GetUsersWithPaginationQueryHandler(
+        IApplicationDbContext context,
+        ICurrentUserService currentUserService)
     {
         _context = context;
+        _currentUserService = currentUserService;
     }
 
     public async Task<Result<PaginatedList<UserDto>>> Handle(
@@ -22,6 +26,7 @@ public class GetUsersWithPaginationQueryHandler
     {
         var query = _context.Users
             .AsNoTracking()
+            .AsSplitQuery()
             .Include(u => u.Tenant)
             .Include(u => u.Department)
             .Include(u => u.UserRoles)
@@ -30,15 +35,67 @@ public class GetUsersWithPaginationQueryHandler
                         .ThenInclude(rp => rp.Permission)
             .AsQueryable();
 
-        // 1. Search term filter (Email, FirstName, LastName, PhoneNumber)
+        // Phân quyền dữ liệu theo phạm vi người gọi
+        var callerRole = _currentUserService.Role;
+        if (callerRole == "SystemAdmin")
+        {
+            // System Admin có toàn quyền xem tất cả người dùng trong hệ thống.
+            // Chỉ lọc khi client chủ động truyền RoleId, TenantId hoặc SearchTerm.
+        }
+        else if (callerRole == "TenantAdmin")
+        {
+            // Tenant Admin chỉ được xem các người dùng trong tổ chức của mình
+            var tid = _currentUserService.TenantId;
+            if (!tid.HasValue && _currentUserService.UserId.HasValue)
+            {
+                var callerUser = await _context.Users.FirstOrDefaultAsync(u => u.Id == _currentUserService.UserId.Value, cancellationToken);
+                tid = callerUser?.TenantId;
+            }
+
+            if (tid.HasValue)
+            {
+                query = query.Where(u => u.TenantId == tid.Value);
+            }
+            else
+            {
+                return Result<PaginatedList<UserDto>>.Failure("Không tìm thấy thông tin tổ chức của người dùng.");
+            }
+        }
+        else if (callerRole == "DepartmentAdmin")
+        {
+            // Department Admin chỉ được xem các nhân viên trong phòng ban của mình
+            var did = _currentUserService.DepartmentId;
+            if (!did.HasValue && _currentUserService.UserId.HasValue)
+            {
+                var callerUser = await _context.Users.FirstOrDefaultAsync(u => u.Id == _currentUserService.UserId.Value, cancellationToken);
+                did = callerUser?.DepartmentId;
+            }
+
+            if (did.HasValue)
+            {
+                query = query.Where(u => u.DepartmentId == did.Value);
+            }
+            else
+            {
+                // Nếu Trưởng phòng chưa thiết lập phòng ban, chỉ hiển thị chính mình
+                query = query.Where(u => u.Id == (_currentUserService.UserId ?? Guid.Empty));
+            }
+        }
+        else
+        {
+            // Người dùng thông thường chỉ xem được chính mình
+            query = query.Where(u => u.Id == (_currentUserService.UserId ?? Guid.Empty));
+        }
+
+        // 1. Search term filter (Email, FirstName, LastName, PhoneNumber) - Sargable search
         if (!string.IsNullOrWhiteSpace(request.SearchTerm))
         {
-            var search = request.SearchTerm.Trim().ToLower();
+            var pattern = $"%{request.SearchTerm.Trim()}%";
             query = query.Where(u => 
-                u.FirstName.ToLower().Contains(search) || 
-                u.LastName.ToLower().Contains(search) || 
-                u.Email.ToLower().Contains(search) || 
-                (u.PhoneNumber != null && u.PhoneNumber.Contains(search)));
+                EF.Functions.Like(u.FirstName, pattern) || 
+                EF.Functions.Like(u.LastName, pattern) || 
+                EF.Functions.Like(u.Email, pattern) || 
+                (u.PhoneNumber != null && EF.Functions.Like(u.PhoneNumber, pattern)));
         }
 
         // 2. Role filter (by RoleId)
@@ -68,10 +125,10 @@ public class GetUsersWithPaginationQueryHandler
         // 6. Order by CreatedAt descending
         query = query.OrderByDescending(u => u.CreatedAt);
 
-        // 7. Paginate
+        // 7. Paginate (Cap pageSize <= 100 theo BUG-27)
         var totalCount = await query.CountAsync(cancellationToken);
         var pageNumber = request.PageNumber <= 0 ? 1 : request.PageNumber;
-        var pageSize = request.PageSize <= 0 ? 10 : request.PageSize;
+        var pageSize = Math.Clamp(request.PageSize <= 0 ? 10 : request.PageSize, 1, 100);
 
         var users = await query
             .Skip((pageNumber - 1) * pageSize)

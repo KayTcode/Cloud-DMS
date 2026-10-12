@@ -1,6 +1,6 @@
 using CleanArchCqrs.Application.Common.Interfaces;
 using CleanArchCqrs.Domain.Entities;
-using CleanArchCqrs.Infrastructure.Persistence.Configuations;
+using CleanArchCqrs.Infrastructure.Authentication;
 using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
 using System.IdentityModel.Tokens.Jwt;
@@ -44,6 +44,14 @@ namespace CleanArchCqrs.Infrastructure.Services
                     new Claim(
                         "tenantId",
                         user.TenantId.Value.ToString()));
+            }
+
+            if (user.DepartmentId.HasValue)
+            {
+                claims.Add(
+                    new Claim(
+                        "departmentId",
+                        user.DepartmentId.Value.ToString()));
             }
 
             var key = new SymmetricSecurityKey(

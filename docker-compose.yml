@@ -1,0 +1,51 @@
+services:
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: clouddms-api
+    ports:
+      - "5000:8080"
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Production
+      - ConnectionStrings__DefaultConnection=Server=mysql;Port=3306;Database=clouddms;User=root;Password=${DB_PASSWORD:-RootPass@123};
+      - JwtSettings__SecretKey=${JWT_SECRET:-SuperSecretJwtKeyWith32CharactersMin!}
+      - JwtSettings__Issuer=CloudDMS
+      - JwtSettings__Audience=CloudDMSUsers
+      - JwtSettings__ExpirationMinutes=15
+      - ClamAV__Host=clamav
+      - ClamAV__Port=3310
+      - ClamAV__Enabled=true
+    depends_on:
+      mysql:
+        condition: service_healthy
+      clamav:
+        condition: service_started
+    restart: unless-stopped
+
+  mysql:
+    image: mysql:8.0
+    container_name: clouddms-mysql
+    ports:
+      - "3306:3306"
+    environment:
+      - MYSQL_ROOT_PASSWORD=${DB_PASSWORD:-RootPass@123}
+      - MYSQL_DATABASE=clouddms
+    volumes:
+      - mysql-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${DB_PASSWORD:-RootPass@123}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  clamav:
+    image: clamav/clamav:latest
+    container_name: clouddms-clamav
+    ports:
+      - "3310:3310"
+    restart: unless-stopped
+
+volumes:
+  mysql-data:

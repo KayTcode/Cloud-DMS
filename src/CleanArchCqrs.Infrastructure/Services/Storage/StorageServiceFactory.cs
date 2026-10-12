@@ -18,7 +18,11 @@ public class StorageServiceFactory : IStorageServiceFactory
 
     public IStorageService CreateService(StorageProvider provider)
     {
-        var rawConfigJson = _encryptionService.Decrypt(provider.ConfigEncrypted);
+        string rawConfigJson = string.Empty;
+        if (provider.Type != StorageProviderType.Local)
+        {
+            rawConfigJson = _encryptionService.Decrypt(provider.ConfigEncrypted);
+        }
         return CreateServiceFromRawConfig(provider.Type, rawConfigJson);
     }
 

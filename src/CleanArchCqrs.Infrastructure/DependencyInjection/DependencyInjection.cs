@@ -1,7 +1,7 @@
 using CleanArchCqrs.Application.Common.Interfaces;
-using CleanArchCqrs.Application.Common.Interfaces.Repositorires;
+using CleanArchCqrs.Application.Common.Interfaces.Repositories;
+using CleanArchCqrs.Infrastructure.Authentication;
 using CleanArchCqrs.Infrastructure.Persistence;
-using CleanArchCqrs.Infrastructure.Persistence.Configuations;
 using CleanArchCqrs.Infrastructure.Repositories;
 using CleanArchCqrs.Infrastructure.Services;
 using CleanArchCqrs.Infrastructure.Services.Auth;

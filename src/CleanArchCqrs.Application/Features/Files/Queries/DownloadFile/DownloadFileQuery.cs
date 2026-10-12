@@ -16,13 +16,16 @@ public class DownloadFileQueryHandler : IRequestHandler<DownloadFileQuery, Resul
 {
     private readonly IApplicationDbContext _context;
     private readonly IStorageServiceFactory _storageServiceFactory;
+    private readonly ICurrentUserService _currentUserService;
 
     public DownloadFileQueryHandler(
         IApplicationDbContext context,
-        IStorageServiceFactory storageServiceFactory)
+        IStorageServiceFactory storageServiceFactory,
+        ICurrentUserService currentUserService)
     {
         _context = context;
         _storageServiceFactory = storageServiceFactory;
+        _currentUserService = currentUserService;
     }
 
     public async Task<Result<DownloadFileResult>> Handle(DownloadFileQuery request, CancellationToken cancellationToken)
@@ -34,6 +37,25 @@ public class DownloadFileQueryHandler : IRequestHandler<DownloadFileQuery, Resul
         if (fileEntry == null)
         {
             return Result<DownloadFileResult>.Failure("Tệp tin không tồn tại hoặc đã bị xóa.");
+        }
+
+        // Chống IDOR: Chỉ SystemAdmin mới được tải xuyên Tenant, còn lại phải đúng TenantId của Caller
+        var isSystemAdmin = _currentUserService.Role == "SystemAdmin";
+        if (!isSystemAdmin)
+        {
+            if (!_currentUserService.TenantId.HasValue || fileEntry.TenantId != _currentUserService.TenantId.Value)
+            {
+                return Result<DownloadFileResult>.Failure("Tệp tin không tồn tại hoặc đã bị xóa.");
+            }
+
+            // Với Employee: chỉ được tải file thuộc phòng ban của mình
+            if (_currentUserService.Role == "Employee" && _currentUserService.DepartmentId.HasValue)
+            {
+                if (fileEntry.DepartmentId != _currentUserService.DepartmentId.Value)
+                {
+                    return Result<DownloadFileResult>.Failure("Tệp tin không tồn tại hoặc đã bị xóa.");
+                }
+            }
         }
 
         if (fileEntry.StorageProvider == null)
