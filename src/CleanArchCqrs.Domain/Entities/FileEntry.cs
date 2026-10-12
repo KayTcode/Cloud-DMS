@@ -25,6 +25,9 @@ public class FileEntry : BaseEntity
     public string ScanStatus { get; set; } = "Clean";
 
     public bool IsDeleted { get; set; }
+    public DateTime? DeletedAt { get; set; }
+    public Guid? DeletedByUserId { get; set; }
+    public User? DeletedByUser { get; set; }
 
     public Guid? StorageProviderId { get; set; }
     public StorageProvider? StorageProvider { get; set; }

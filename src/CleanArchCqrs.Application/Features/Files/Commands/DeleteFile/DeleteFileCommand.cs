@@ -55,21 +55,9 @@ public class DeleteFileCommandHandler : IRequestHandler<DeleteFileCommand, Resul
             }
         }
 
-        // Xóa trên Cloud nếu có StorageProvider (Network I/O ngoài transaction để tránh lock DB)
-        if (fileEntry.StorageProvider != null)
-        {
-            try
-            {
-                var storageService = _storageServiceFactory.CreateService(fileEntry.StorageProvider);
-                await storageService.DeleteFileAsync(fileEntry.StorageKey, cancellationToken);
-            }
-            catch
-            {
-                // Tiếp tục xử lý xóa logic để đảm bảo giải phóng dung lượng quota
-            }
-        }
+        var callerUserId = _currentUserService.UserId ?? fileEntry.OwnerId;
 
-        // Bọc cập nhật hoàn lại quota và đánh dấu xóa trong transaction
+        // Bọc cập nhật đánh dấu xóa mềm trong transaction
         var strategy = _context.Database.CreateExecutionStrategy();
         return await strategy.ExecuteAsync(async () =>
         {
@@ -79,7 +67,6 @@ public class DeleteFileCommandHandler : IRequestHandler<DeleteFileCommand, Resul
             try
             {
                 var lockedFile = await _context.FileEntries
-                    .Include(f => f.StorageProvider)
                     .FirstOrDefaultAsync(f => f.Id == fileEntry.Id, cancellationToken);
 
                 if (lockedFile == null || lockedFile.IsDeleted)
@@ -88,56 +75,21 @@ public class DeleteFileCommandHandler : IRequestHandler<DeleteFileCommand, Resul
                     return Result<bool>.Failure("Tệp tin không tồn tại hoặc đã bị xóa.");
                 }
 
-                // Hoàn lại dung lượng cho StorageProvider
-                if (lockedFile.StorageProvider != null)
-                {
-                    lockedFile.StorageProvider.UsedCapacityBytes = Math.Max(0, lockedFile.StorageProvider.UsedCapacityBytes - lockedFile.SizeBytes);
-                }
-
-                // Hoàn lại dung lượng cho Tenant
-                var tenant = await _context.Tenants.FirstOrDefaultAsync(t => t.Id == lockedFile.TenantId, cancellationToken);
-                if (tenant != null)
-                {
-                    tenant.StorageUsedBytes = Math.Max(0, tenant.StorageUsedBytes - lockedFile.SizeBytes);
-                }
-
-                // Hoàn lại dung lượng cho Department
-                var departmentId = lockedFile.DepartmentId;
-                if (!departmentId.HasValue)
-                {
-                    var fileOwner = await _context.Users.FirstOrDefaultAsync(u => u.Id == lockedFile.OwnerId, cancellationToken);
-                    departmentId = fileOwner?.DepartmentId;
-                }
-
-                if (departmentId.HasValue)
-                {
-                    var department = await _context.Departments.FirstOrDefaultAsync(d => d.Id == departmentId.Value, cancellationToken);
-                    if (department != null)
-                    {
-                        department.StorageUsedBytes = Math.Max(0, department.StorageUsedBytes - lockedFile.SizeBytes);
-                    }
-                }
-
-                // Hoàn lại dung lượng cá nhân cho User
-                var userQuota = await _context.UserStorageQuotas.FirstOrDefaultAsync(q => q.UserId == lockedFile.OwnerId, cancellationToken);
-                if (userQuota != null)
-                {
-                    userQuota.UsedBytes = Math.Max(0, userQuota.UsedBytes - lockedFile.SizeBytes);
-                }
-
-                // Đánh dấu đã xóa
+                // Đánh dấu chuyển vào thùng rác (Không xóa file trên Cloud và Chưa trừ Quota)
                 lockedFile.IsDeleted = true;
+                lockedFile.DeletedAt = DateTime.UtcNow;
+                lockedFile.DeletedByUserId = callerUserId;
 
                 // Ghi AuditLog
                 _context.AuditLogs.Add(new AuditLog
                 {
                     Id = Guid.NewGuid(),
                     TenantId = lockedFile.TenantId,
-                    UserId = _currentUserService.UserId ?? lockedFile.OwnerId,
-                    Action = "Delete",
+                    UserId = callerUserId,
+                    Action = "MoveToTrash",
                     EntityName = "FileEntry",
                     EntityId = lockedFile.Id,
-                    Details = $"Đã xóa tệp tin '{lockedFile.Name}' và giải phóng {lockedFile.SizeBytes} bytes dung lượng.",
+                    Details = $"Đã chuyển tệp tin '{lockedFile.Name}' ({lockedFile.SizeBytes} bytes) vào thùng rác.",
                     CreatedAt = DateTime.UtcNow
                 });
 
