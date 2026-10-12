@@ -8,6 +8,8 @@ public sealed record LoginResponseDto(
     string FullName,
     string Role,
     Guid? TenantId,
-    List<string> Permissions
+    List<string> Permissions,
+    string RefreshToken,
+    DateTime RefreshTokenExpiresAt
 );
 

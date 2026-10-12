@@ -1,3 +1,8 @@
+using System.Security.Cryptography;
+using System.Text;
+using System.Text.Json;
+using CleanArchCqrs.Application.Common.Authorization;
+using CleanArchCqrs.Application.Common.Interfaces;
 using CleanArchCqrs.Application.Common.Models;
 using CleanArchCqrs.Application.Features.SystemAdmin.Commands.AssignUserRoles;
 using CleanArchCqrs.Application.Features.SystemAdmin.Commands.ChangeUserStatus;
@@ -10,6 +15,8 @@ using CleanArchCqrs.Application.Features.SystemAdmin.Queries.GetUserById;
 using CleanArchCqrs.Application.Features.SystemAdmin.Queries.GetUsersWithPagination;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
+using CleanArchCqrs.Domain.Enums;
+using Microsoft.AspNetCore.Authorization;
 
 namespace CleanArchCqrs.API.Controllers.Admin;
 
@@ -20,6 +27,17 @@ namespace CleanArchCqrs.API.Controllers.Admin;
 [Route("api/admin/users")]
 public class UsersController : ApiControllerBase
 {
+    private readonly IAuthorizationMutationCoordinator _mutationCoordinator;
+    private readonly ICurrentUserService _currentUserService;
+
+    public UsersController(
+        IAuthorizationMutationCoordinator mutationCoordinator,
+        ICurrentUserService currentUserService)
+    {
+        _mutationCoordinator = mutationCoordinator;
+        _currentUserService = currentUserService;
+    }
+
     /// <summary>
     /// Gets a paginated and filterable list of all system users.
     /// </summary>
@@ -59,9 +77,15 @@ public class UsersController : ApiControllerBase
     /// Updates general profile information of a user.
     /// </summary>
     [HttpPut("{id:guid}")]
-    [ProducesResponseType(typeof(Result<UserDto>), StatusCodes.Status200OK)]
+    [Authorize(Policy = "user.manage")]
+    [ProducesResponseType(typeof(OperationStatusResponse), StatusCodes.Status202Accepted)]
+    [ProducesResponseType(typeof(OperationStatusResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(Result), StatusCodes.Status400BadRequest)]
-    public async Task<ActionResult> UpdateUser(Guid id, [FromBody] UpdateUserRequest request)
+    public Task<ActionResult> UpdateUser(
+        Guid id,
+        [FromBody] UpdateUserRequest request,
+        [FromHeader(Name = "Idempotency-Key")] string? idempotencyKey,
+        CancellationToken cancellationToken)
     {
         var command = new UpdateUserCommand
         {
@@ -72,18 +96,49 @@ public class UsersController : ApiControllerBase
             IsActive = request.IsActive
         };
 
-        var result = await Sender.Send(command);
-        return HandleResult(result);
+        return ExecuteAuthorizationMutationAsync(
+            idempotencyKey,
+            JsonSerializer.Serialize(new
+            {
+                UserId = id,
+                request.FirstName,
+                request.LastName,
+                request.PhoneNumber,
+                request.IsActive
+            }),
+            async token =>
+            {
+                var result = await Sender.Send(command, token);
+                if (result.IsFailure)
+                {
+                    throw new MutationCommandRejectedException(result);
+                }
+
+                return result;
+            },
+            cancellationToken);
     }
 
     /// <summary>
     /// Assigns or updates the roles and organization hierarchy (Tenant/Department) for a user.
     /// </summary>
     [HttpPut("{id:guid}/roles")]
-    [ProducesResponseType(typeof(Result<UserDto>), StatusCodes.Status200OK)]
+    [Authorize(Policy = "user.manage")]
+    [ProducesResponseType(typeof(OperationStatusResponse), StatusCodes.Status202Accepted)]
+    [ProducesResponseType(typeof(OperationStatusResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(Result), StatusCodes.Status400BadRequest)]
-    public async Task<ActionResult> AssignRoles(Guid id, [FromBody] AssignUserRolesRequest request)
+    public Task<ActionResult> AssignRoles(
+        Guid id,
+        [FromBody] AssignUserRolesRequest request,
+        [FromHeader(Name = "Idempotency-Key")] string? idempotencyKey,
+        CancellationToken cancellationToken)
     {
+        if (request.RoleIds is null)
+        {
+            return Task.FromResult<ActionResult>(
+                BadRequest(Result.Failure("RoleIds cannot be null.")));
+        }
+
         var command = new AssignUserRolesCommand
         {
             Id = id,
@@ -92,8 +147,27 @@ public class UsersController : ApiControllerBase
             DepartmentId = request.DepartmentId
         };
 
-        var result = await Sender.Send(command);
-        return HandleResult(result);
+        var canonicalPayload = JsonSerializer.Serialize(new
+        {
+            UserId = id,
+            request.TenantId,
+            request.DepartmentId,
+            RoleIds = request.RoleIds.Distinct().OrderBy(roleId => roleId).ToArray()
+        });
+        return ExecuteAuthorizationMutationAsync(
+            idempotencyKey,
+            canonicalPayload,
+            async token =>
+            {
+                var result = await Sender.Send(command, token);
+                if (result.IsFailure)
+                {
+                    throw new MutationCommandRejectedException(result);
+                }
+
+                return result;
+            },
+            cancellationToken);
     }
 
     /// <summary>
@@ -117,26 +191,113 @@ public class UsersController : ApiControllerBase
     /// <summary>
     /// Activates or deactivates a user account.
     /// </summary>
+    [Authorize(Policy = "user.manage")]
     [HttpPatch("{id:guid}/status")]
-    [ProducesResponseType(typeof(Result), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(OperationStatusResponse), StatusCodes.Status202Accepted)]
+    [ProducesResponseType(typeof(OperationStatusResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(Result), StatusCodes.Status400BadRequest)]
-    public async Task<ActionResult> ChangeStatus(Guid id, [FromBody] ChangeUserStatusRequest request)
+    public async Task<ActionResult> ChangeStatus(
+        Guid id,
+        [FromBody] ChangeUserStatusRequest request,
+        [FromHeader(Name = "Idempotency-Key")] string? idempotencyKey,
+        CancellationToken cancellationToken)
     {
-        var result = await Sender.Send(new ChangeUserStatusCommand(id, request.IsActive));
-        return HandleResult(result);
+        return await ExecuteAuthorizationMutationAsync(
+            idempotencyKey,
+            JsonSerializer.Serialize(new { UserId = id, request.IsActive }),
+            async token =>
+            {
+                var result = await Sender.Send(
+                    new ChangeUserStatusCommand(id, request.IsActive),
+                    token);
+                if (result.IsFailure)
+                {
+                    throw new MutationCommandRejectedException(result);
+                }
+
+                return result;
+            },
+            cancellationToken);
     }
 
     /// <summary>
     /// Deletes a user account.
     /// </summary>
     [HttpDelete("{id:guid}")]
-    [ProducesResponseType(typeof(Result), StatusCodes.Status200OK)]
+    [Authorize(Policy = "user.manage")]
+    [ProducesResponseType(typeof(OperationStatusResponse), StatusCodes.Status202Accepted)]
+    [ProducesResponseType(typeof(OperationStatusResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(Result), StatusCodes.Status400BadRequest)]
-    public async Task<ActionResult> DeleteUser(Guid id)
+    public Task<ActionResult> DeleteUser(
+        Guid id,
+        [FromHeader(Name = "Idempotency-Key")] string? idempotencyKey,
+        CancellationToken cancellationToken)
     {
-        var result = await Sender.Send(new DeleteUserCommand(id));
-        return HandleResult(result);
+        return ExecuteAuthorizationMutationAsync(
+            idempotencyKey,
+            JsonSerializer.Serialize(new { UserId = id, Operation = "delete" }),
+            async token =>
+            {
+                var result = await Sender.Send(new DeleteUserCommand(id), token);
+                if (result.IsFailure)
+                {
+                    throw new MutationCommandRejectedException(result);
+                }
+
+                return result;
+            },
+            cancellationToken);
     }
+
+    private async Task<ActionResult> ExecuteAuthorizationMutationAsync(
+        string? idempotencyKey,
+        string canonicalPayload,
+        Func<CancellationToken, Task<Result>> persistChange,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(idempotencyKey) || idempotencyKey.Length > 128)
+        {
+            return BadRequest(Result.Failure("A valid Idempotency-Key header is required."));
+        }
+
+        if (!_currentUserService.UserId.HasValue)
+        {
+            return Unauthorized();
+        }
+
+        var actorId = _currentUserService.UserId.Value;
+        var payloadHash = Convert.ToHexString(
+            SHA256.HashData(Encoding.UTF8.GetBytes(canonicalPayload)));
+        var scopedIdempotencyKey = Convert.ToHexString(
+            SHA256.HashData(Encoding.UTF8.GetBytes($"{actorId:N}:{idempotencyKey}")));
+        MutationReceipt receipt;
+        try
+        {
+            receipt = await _mutationCoordinator.ExecuteAsync(
+                new MutationRequest("global", scopedIdempotencyKey, payloadHash),
+                actorId,
+                async token => await persistChange(token),
+                cancellationToken);
+        }
+        catch (MutationCommandRejectedException exception)
+        {
+            return BadRequest(exception.Result);
+        }
+
+        var response = new OperationStatusResponse(
+            receipt.OperationId,
+            receipt.Version,
+            receipt.Status.ToString());
+        var location = $"/api/operations/{receipt.OperationId:D}";
+        return receipt.Status == AuthorizationOperationStatus.Applied
+            ? Ok(response)
+            : Accepted(location, response);
+    }
+}
+
+internal sealed class MutationCommandRejectedException(Result result) : Exception
+{
+    public Result Result { get; } = result;
 }
 
 public record UpdateUserRequest(string FirstName, string LastName, string? PhoneNumber, bool IsActive);

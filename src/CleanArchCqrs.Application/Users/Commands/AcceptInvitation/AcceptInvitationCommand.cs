@@ -115,6 +115,9 @@ public class AcceptInvitationCommandHandler : IRequestHandler<AcceptInvitationCo
 
         var token = _jwtTokenService.GenerateAccessToken(user, role, permissions);
 
+        var refreshToken = Guid.NewGuid().ToString("N");
+        var refreshTokenExpiresAt = DateTime.UtcNow.AddDays(7);
+
         return new LoginResponseDto(
             token.AccessToken,
             token.ExpiresAt,
@@ -123,6 +126,8 @@ public class AcceptInvitationCommandHandler : IRequestHandler<AcceptInvitationCo
             user.FullName,
             role,
             user.TenantId,
-            permissions.ToList());
+            permissions.ToList(),
+            refreshToken,
+            refreshTokenExpiresAt);
     }
 }

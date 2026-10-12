@@ -8,7 +8,12 @@ public class UserStorageQuotaConfiguration : IEntityTypeConfiguration<UserStorag
 {
     public void Configure(EntityTypeBuilder<UserStorageQuota> builder)
     {
-        builder.ToTable("UserStorageQuotas");
+        builder.ToTable("UserStorageQuotas", table =>
+        {
+            table.HasCheckConstraint("CK_UserStorageQuotas_QuotaBytes_NonNegative", "`QuotaBytes` >= 0");
+            table.HasCheckConstraint("CK_UserStorageQuotas_UsedBytes_NonNegative", "`UsedBytes` >= 0");
+            table.HasCheckConstraint("CK_UserStorageQuotas_UsedBytes_Lte_QuotaBytes", "`UsedBytes` <= `QuotaBytes`");
+        });
 
         builder.HasKey(q => q.Id);
 
@@ -19,11 +24,11 @@ public class UserStorageQuotaConfiguration : IEntityTypeConfiguration<UserStorag
             .IsRequired();
 
         builder.HasOne(q => q.User)
-            .WithOne()
-            .HasForeignKey<UserStorageQuota>(q => q.UserId)
-            .OnDelete(DeleteBehavior.Cascade);
+            .WithMany()
+            .HasForeignKey(q => q.UserId)
+            .OnDelete(DeleteBehavior.Restrict);
 
-        builder.HasIndex(q => q.UserId)
+        builder.HasIndex(q => new { q.UserId, q.DepartmentId })
             .IsUnique();
     }
 }

@@ -21,6 +21,10 @@ namespace CleanArchCqrs.Application.Common.Interfaces.Repositorires
             string email,
             CancellationToken cancellationToken = default);
 
+        Task<User?> GetByGoogleSubjectAsync(
+            string googleSubject,
+            CancellationToken cancellationToken = default);
+
         Task AddAsync(
             User user,
             CancellationToken cancellationToken = default);

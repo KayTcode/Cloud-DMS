@@ -21,22 +21,27 @@ public class GetTenantFilesQueryHandler : IRequestHandler<GetTenantFilesQuery, R
 
     public async Task<Result<TenantStorageSummaryDto>> Handle(GetTenantFilesQuery request, CancellationToken cancellationToken)
     {
-        var tenantId = request.TenantId ?? _currentUserService.TenantId;
-
-        if (!tenantId.HasValue)
+        var currentUserId = _currentUserService.UserId;
+        if (!currentUserId.HasValue)
         {
-            // Thử lấy TenantId của user hiện tại
-            var userId = _currentUserService.UserId;
-            if (userId.HasValue)
-            {
-                var user = await _context.Users.FirstOrDefaultAsync(u => u.Id == userId.Value, cancellationToken);
-                tenantId = user?.TenantId;
-            }
+            return Result<TenantStorageSummaryDto>.Failure("Bạn chưa xác thực danh tính người dùng.");
         }
 
+        var currentUser = await _context.Users.FirstOrDefaultAsync(u => u.Id == currentUserId.Value && u.IsActive, cancellationToken);
+        if (currentUser == null)
+        {
+            return Result<TenantStorageSummaryDto>.Failure("Người dùng hiện tại không hợp lệ.");
+        }
+
+        var tenantId = _currentUserService.TenantId ?? currentUser.TenantId;
         if (!tenantId.HasValue)
         {
             return Result<TenantStorageSummaryDto>.Failure("Không xác định được tổ chức/tenant.");
+        }
+
+        if (request.TenantId.HasValue && request.TenantId.Value != tenantId.Value)
+        {
+            return Result<TenantStorageSummaryDto>.Failure("Bạn không có quyền xem dữ liệu của tenant khác.");
         }
 
         var tenant = await _context.Tenants

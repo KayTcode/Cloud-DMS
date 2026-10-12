@@ -26,6 +26,19 @@ public class DeleteFileCommandHandler : IRequestHandler<DeleteFileCommand, Resul
 
     public async Task<Result<bool>> Handle(DeleteFileCommand request, CancellationToken cancellationToken)
     {
+        var currentUserId = _currentUserService.UserId;
+        if (!currentUserId.HasValue)
+        {
+            return Result<bool>.Failure("Bạn chưa xác thực danh tính người dùng.");
+        }
+
+        var currentTenantId = _currentUserService.TenantId;
+        if (!currentTenantId.HasValue)
+        {
+            var currentUser = await _context.Users.FirstOrDefaultAsync(u => u.Id == currentUserId.Value && u.IsActive, cancellationToken);
+            currentTenantId = currentUser?.TenantId;
+        }
+
         var fileEntry = await _context.FileEntries
             .Include(f => f.StorageProvider)
             .FirstOrDefaultAsync(f => f.Id == request.FileId && !f.IsDeleted, cancellationToken);
@@ -33,6 +46,11 @@ public class DeleteFileCommandHandler : IRequestHandler<DeleteFileCommand, Resul
         if (fileEntry == null)
         {
             return Result<bool>.Failure("Tệp tin không tồn tại hoặc đã bị xóa.");
+        }
+
+        if (currentTenantId.HasValue && fileEntry.TenantId != currentTenantId.Value && fileEntry.OwnerId != currentUserId.Value)
+        {
+            return Result<bool>.Failure("Bạn không có quyền xóa tệp tin này.");
         }
 
         // Xóa trên Cloud nếu có StorageProvider

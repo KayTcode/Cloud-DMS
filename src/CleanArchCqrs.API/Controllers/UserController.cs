@@ -9,6 +9,7 @@ namespace CleanArchCqrs.API.Controllers
 {
     [Route("api/[controller]")]
     [ApiController]
+    [Authorize]
     public class UserController : ControllerBase
     {
         private readonly IMediator _mediator;
@@ -28,6 +29,7 @@ namespace CleanArchCqrs.API.Controllers
         {
             return Ok();
         }
+        [AllowAnonymous]
         [HttpPost("login")]
         public async Task<IActionResult> Login([FromBody] LoginCommand command, CancellationToken cancellationToken)
         {

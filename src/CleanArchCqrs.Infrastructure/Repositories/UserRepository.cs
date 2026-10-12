@@ -41,6 +41,14 @@ namespace CleanArchCqrs.Infrastructure.Repositories
                 cancellationToken);
         }
 
+        public async Task<User?> GetByGoogleSubjectAsync(string googleSubject, CancellationToken cancellationToken = default)
+        {
+            return await _context.Users
+                .FirstOrDefaultAsync(
+                    x => x.GoogleSubject != null && x.GoogleSubject == googleSubject,
+                    cancellationToken);
+        }
+
         public async Task<User?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default)
         {
             return await _context.Users

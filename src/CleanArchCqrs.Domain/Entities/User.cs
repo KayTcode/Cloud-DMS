@@ -1,4 +1,5 @@
 using CleanArchCqrs.Domain.Common;
+using CleanArchCqrs.Domain.Enums;
 
 namespace CleanArchCqrs.Domain.Entities;
 
@@ -17,7 +18,11 @@ public class User : BaseEntity
     public string LastName { get; set; } = string.Empty;
     public string? PhoneNumber { get; set; }
     public bool IsActive { get; set; } = true;
+    public long AuthorizationVersion { get; set; } = 1;
+    public UserProvisioningState ProvisioningState { get; set; } = UserProvisioningState.Ready;
     public bool EmailConfirmed { get; set; } = false;
+    public string? GoogleSubject { get; set; }
+    public string? GoogleIssuer { get; set; }
     public DateTime? LastLoginAt { get; set; }
 
     public string FullName => $"{FirstName} {LastName}".Trim();

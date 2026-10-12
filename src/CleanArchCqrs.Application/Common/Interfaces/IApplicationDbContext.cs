@@ -20,6 +20,10 @@ public interface IApplicationDbContext
     DbSet<Product> Products { get; }
     DbSet<EmailVerificationToken> EmailVerificationTokens { get; }
     DbSet<UserStorageQuota> UserStorageQuotas { get; }
+    DbSet<AuthorizationOperation> AuthorizationOperations { get; }
+    DbSet<OutboxMessage> OutboxMessages { get; }
+    DbSet<AuthorizationScope> AuthorizationScopes { get; }
+    DbSet<QuotaReservation> QuotaReservations { get; }
     DbSet<StorageProvider> StorageProviders { get; }
 
     Task<int> SaveChangesAsync(CancellationToken cancellationToken = default);

@@ -28,23 +28,32 @@ public class Program
 
         // Add services
         builder.Services.AddControllers();
+        builder.Services.AddMemoryCache();
 
-        // Add CORS
+        // CORS: restrict to configured frontend origins instead of trusting every origin.
+        var allowedOrigins = builder.Configuration.GetSection("Cors:AllowedOrigins").Get<string[]>()
+            ?? new[] { "http://localhost:3000", "http://localhost:5173" };
+
         builder.Services.AddCors(options =>
         {
             options.AddPolicy("AllowFrontend", policy =>
             {
-                policy.AllowAnyOrigin()
+                policy.WithOrigins(allowedOrigins)
                       .AllowAnyMethod()
                       .AllowAnyHeader();
             });
         });
 
-        // JWT Configuration
+        // JWT Configuration: require a configured secret instead of silently accepting a default fallback key.
         var jwtSettings = builder.Configuration.GetSection("JwtSettings");
-        var secretKey = jwtSettings["SecretKey"] ?? "DefaultSuperSecretKey12345678901234567890";
-        var issuer = jwtSettings["Issuer"] ?? "CloudDMS";
-        var audience = jwtSettings["Audience"] ?? "CloudDMSUsers";
+        var secretKey = jwtSettings["SecretKey"];
+        if (string.IsNullOrWhiteSpace(secretKey))
+        {
+            throw new InvalidOperationException("JwtSettings:SecretKey must be configured via environment variables or user secrets.");
+        }
+
+        var issuer = jwtSettings["Issuer"] ?? throw new InvalidOperationException("JwtSettings:Issuer must be configured.");
+        var audience = jwtSettings["Audience"] ?? throw new InvalidOperationException("JwtSettings:Audience must be configured.");
 
         builder.Services
             .AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
@@ -62,7 +71,12 @@ public class Program
                 };
             });
 
-        builder.Services.AddAuthorization();
+        builder.Services.AddAuthorization(options =>
+        {
+            options.FallbackPolicy = new AuthorizationPolicyBuilder()
+                .RequireAuthenticatedUser()
+                .Build();
+        });
         builder.Services.AddSingleton<IAuthorizationPolicyProvider, PermissionPolicyProvider>();
         builder.Services.AddEndpointsApiExplorer();
 
@@ -107,6 +121,7 @@ public class Program
 
         // Register application and infrastructure services
         builder.Services.AddHttpContextAccessor();
+        builder.Services.AddHttpClient();
         builder.Services.AddScoped<CleanArchCqrs.Application.Common.Interfaces.ICurrentUserService, CleanArchCqrs.API.Services.CurrentUserService>();
         builder.Services.AddInfrastructureServices(builder.Configuration);
         builder.Services.AddApplicationServices();
@@ -142,17 +157,6 @@ public class Program
 
                 try
                 {
-                    // Ensure existing demo users are confirmed so login succeeds
-                    await context.Database.ExecuteSqlRawAsync(
-                        "UPDATE `Users` SET `EmailConfirmed` = 1 WHERE `EmailConfirmed` = 0;");
-                }
-                catch
-                {
-                    // Ignore
-                }
-
-                try
-                {
                     await context.Database.ExecuteSqlRawAsync(@"
                         CREATE TABLE IF NOT EXISTS `EmailVerificationTokens` (
                             `Id` char(36) COLLATE ascii_general_ci NOT NULL,
@@ -174,6 +178,16 @@ public class Program
                 catch (Exception exTokens)
                 {
                     logger.LogWarning(exTokens, "Creation of EmailVerificationTokens table skipped.");
+                }
+
+                if (await EnsureGoogleUserColumnExistsAsync(context, "GoogleSubject"))
+                {
+                    logger.LogInformation("Added missing column GoogleSubject to Users table.");
+                }
+
+                if (await EnsureGoogleUserColumnExistsAsync(context, "GoogleIssuer"))
+                {
+                    logger.LogInformation("Added missing column GoogleIssuer to Users table.");
                 }
 
                 try
@@ -260,11 +274,39 @@ public class Program
             });
         }
 
+        app.UseMiddleware<CleanArchCqrs.API.Middleware.GlobalExceptionHandlerMiddleware>();
         app.UseCors("AllowFrontend");
         app.UseAuthentication();
         app.UseAuthorization();
         app.MapControllers();
 
         await app.RunAsync();
+    }
+
+    private static async Task<bool> EnsureGoogleUserColumnExistsAsync(
+        AppDbContext context,
+        string columnName,
+        CancellationToken cancellationToken = default)
+    {
+        var columnCount = await context.Database.SqlQueryRaw<int>(
+            "SELECT COUNT(*) AS `Value` FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = {0} AND COLUMN_NAME = {1}",
+            "Users",
+            columnName)
+            .SingleAsync(cancellationToken);
+
+        if (columnCount > 0)
+        {
+            return false;
+        }
+
+        var alterStatement = columnName switch
+        {
+            "GoogleSubject" => "ALTER TABLE `Users` ADD COLUMN `GoogleSubject` varchar(255) NULL;",
+            "GoogleIssuer" => "ALTER TABLE `Users` ADD COLUMN `GoogleIssuer` varchar(255) NULL;",
+            _ => throw new ArgumentOutOfRangeException(nameof(columnName), "Unsupported Google identity column.")
+        };
+
+        await context.Database.ExecuteSqlRawAsync(alterStatement, cancellationToken);
+        return true;
     }
 }

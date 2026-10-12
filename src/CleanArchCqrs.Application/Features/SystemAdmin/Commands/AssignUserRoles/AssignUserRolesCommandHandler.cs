@@ -47,6 +47,11 @@ public class AssignUserRolesCommandHandler : IRequestHandler<AssignUserRolesComm
             }
         }
 
+        if (request.DepartmentId.HasValue && !request.TenantId.HasValue)
+        {
+            return Result<UserDto>.Failure("A tenant must be selected when assigning a department.");
+        }
+
         if (request.DepartmentId.HasValue)
         {
             department = await _context.Departments
@@ -63,14 +68,28 @@ public class AssignUserRolesCommandHandler : IRequestHandler<AssignUserRolesComm
             }
         }
 
+        // 2. Update Roles
+        var currentRoleIds = user.UserRoles.Select(ur => ur.RoleId).ToList();
+        var targetRoleIds = (request.RoleIds ?? new List<Guid>()).Distinct().ToList();
+        var authorizationChanged = user.TenantId != request.TenantId
+            || user.DepartmentId != request.DepartmentId
+            || !currentRoleIds.OrderBy(roleId => roleId)
+                .SequenceEqual(targetRoleIds.OrderBy(roleId => roleId));
+
+        if (targetRoleIds.Count > 0)
+        {
+            var validRoleCount = await _context.Roles
+                .CountAsync(role => targetRoleIds.Contains(role.Id), cancellationToken);
+            if (validRoleCount != targetRoleIds.Count)
+            {
+                return Result<UserDto>.Failure("One or more role IDs are invalid.");
+            }
+        }
+
         user.TenantId = request.TenantId;
         user.Tenant = tenant;
         user.DepartmentId = request.DepartmentId;
         user.Department = department;
-
-        // 2. Update Roles
-        var currentRoleIds = user.UserRoles.Select(ur => ur.RoleId).ToList();
-        var targetRoleIds = request.RoleIds ?? new List<Guid>();
 
         // Remove unassigned roles
         var rolesToRemove = user.UserRoles.Where(ur => !targetRoleIds.Contains(ur.RoleId)).ToList();
@@ -81,7 +100,7 @@ public class AssignUserRolesCommandHandler : IRequestHandler<AssignUserRolesComm
 
         // Add newly assigned roles
         var rolesToAdd = targetRoleIds.Except(currentRoleIds).ToList();
-        if (rolesToAdd.Any())
+        if (rolesToAdd.Count > 0)
         {
             var validRoles = await _context.Roles
                 .Where(r => rolesToAdd.Contains(r.Id))
@@ -98,6 +117,11 @@ public class AssignUserRolesCommandHandler : IRequestHandler<AssignUserRolesComm
                     Role = role
                 });
             }
+        }
+
+        if (authorizationChanged)
+        {
+            user.AuthorizationVersion = checked(user.AuthorizationVersion + 1);
         }
 
         user.UpdatedAt = DateTime.UtcNow;

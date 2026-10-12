@@ -33,46 +33,44 @@ public class UploadFileCommandHandler : IRequestHandler<UploadFileCommand, Resul
 
     public async Task<Result<FileEntryDto>> Handle(UploadFileCommand request, CancellationToken cancellationToken)
     {
-        // 0. Xác định User & Tenant Context
-        var userId = request.UserIdOverride ?? _currentUserService.UserId;
-        var tenantId = request.TenantIdOverride ?? _currentUserService.TenantId;
-
-        User? user = null;
-        if (userId.HasValue)
-        {
-            user = await _context.Users
-                .Include(u => u.Tenant)
-                .FirstOrDefaultAsync(u => u.Id == userId.Value, cancellationToken);
-        }
-
-        // Nếu không lấy được user từ token nhưng có thông tin Tenant, tự động fallback về user/admin đang hoạt động của Tenant đó
-        if (user == null && tenantId.HasValue)
-        {
-            user = await _context.Users
-                .Include(u => u.Tenant)
-                .FirstOrDefaultAsync(u => u.TenantId == tenantId.Value && u.IsActive, cancellationToken);
-            userId = user?.Id;
-        }
-
-        // Fallback an toàn cuối cùng: Lấy user active hợp lệ đầu tiên trong CSDL
-        if (user == null)
-        {
-            user = await _context.Users
-                .Include(u => u.Tenant)
-                .FirstOrDefaultAsync(u => u.IsActive, cancellationToken);
-            userId = user?.Id;
-        }
-
-        if (user == null || !userId.HasValue)
+        Guid? currentUserId = _currentUserService.UserId;
+        if (!currentUserId.HasValue)
         {
             return Result<FileEntryDto>.Failure("Yêu cầu không hợp lệ: Chưa xác thực danh tính người dùng.");
         }
 
-        tenantId ??= user.TenantId;
+        if (request.UserIdOverride.HasValue && request.UserIdOverride != currentUserId)
+        {
+            return Result<FileEntryDto>.Failure("Không được phép thay đổi người dùng tải lên.");
+        }
+
+        Guid? currentTenantId = _currentUserService.TenantId;
+        var user = await _context.Users
+            .Include(u => u.Tenant)
+            .FirstOrDefaultAsync(u => u.Id == currentUserId.Value && u.IsActive, cancellationToken);
+
+        if (user == null)
+        {
+            return Result<FileEntryDto>.Failure("Người dùng hiện tại không hợp lệ hoặc đã bị vô hiệu hóa.");
+        }
+
+        Guid? tenantId = currentTenantId ?? user.TenantId;
         if (!tenantId.HasValue)
         {
             return Result<FileEntryDto>.Failure("Người dùng hiện tại chưa được liên kết với bất kỳ Tổ chức/Tenant nào.");
         }
+
+        if (request.TenantIdOverride.HasValue && request.TenantIdOverride != tenantId)
+        {
+            return Result<FileEntryDto>.Failure("Không được phép thay đổi tenant tải lên.");
+        }
+
+        if (request.StorageProviderIdOverride.HasValue && request.StorageProviderIdOverride != (user.Tenant?.StorageProviderId ?? Guid.Empty))
+        {
+            return Result<FileEntryDto>.Failure("Không được phép thay đổi nhà cung cấp lưu trữ.");
+        }
+
+        Guid userId = currentUserId.Value;
 
         var tenant = await _context.Tenants
             .Include(t => t.StorageProvider)
@@ -93,7 +91,7 @@ public class UploadFileCommandHandler : IRequestHandler<UploadFileCommand, Resul
 
         // 1.2 Kiểm tra Quota cá nhân User (nếu có cấp riêng)
         var userQuota = await _context.UserStorageQuotas
-            .FirstOrDefaultAsync(q => q.UserId == userId.Value, cancellationToken);
+            .FirstOrDefaultAsync(q => q.UserId == userId, cancellationToken);
 
         if (userQuota != null && userQuota.UsedBytes + request.FileSize > userQuota.QuotaBytes)
         {
@@ -136,7 +134,7 @@ public class UploadFileCommandHandler : IRequestHandler<UploadFileCommand, Resul
             {
                 Id = Guid.NewGuid(),
                 TenantId = tenant.Id,
-                UserId = userId.Value,
+                UserId = userId,
                 Action = "VirusDetected",
                 EntityName = "FileEntry",
                 Details = $"CẢNH BÁO BẢO MẬT: Phát hiện mã độc '{scanResult.ThreatName}' trong tệp tin '{request.FileName}'. Đã chặn tải lên.",
@@ -192,7 +190,7 @@ public class UploadFileCommandHandler : IRequestHandler<UploadFileCommand, Resul
         {
             Id = Guid.NewGuid(),
             TenantId = tenant.Id,
-            OwnerId = userId.Value,
+            OwnerId = userId,
             FolderId = request.FolderId,
             Name = request.FileName,
             StorageKey = storageKey,
@@ -224,7 +222,7 @@ public class UploadFileCommandHandler : IRequestHandler<UploadFileCommand, Resul
         {
             Id = Guid.NewGuid(),
             TenantId = tenant.Id,
-            UserId = userId.Value,
+            UserId = userId,
             Action = "Upload",
             EntityName = "FileEntry",
             EntityId = fileEntry.Id,

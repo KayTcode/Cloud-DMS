@@ -19,8 +19,6 @@ public class ChangeUserStatusCommandHandler : IRequestHandler<ChangeUserStatusCo
         CancellationToken cancellationToken)
     {
         var user = await _context.Users
-            .Include(u => u.UserRoles)
-                .ThenInclude(ur => ur.Role)
             .FirstOrDefaultAsync(u => u.Id == request.Id, cancellationToken);
 
         if (user == null)
@@ -31,7 +29,11 @@ public class ChangeUserStatusCommandHandler : IRequestHandler<ChangeUserStatusCo
         // Logic: Không cho phép vô hiệu hóa (Inactive) nếu đây là SystemAdmin đang hoạt động duy nhất
         if (!request.IsActive && user.IsActive)
         {
-            var isSystemAdmin = user.UserRoles.Any(ur => ur.Role != null && ur.Role.Name == "SystemAdmin");
+            var isSystemAdmin = await _context.UserRoles
+                .AnyAsync(
+                    userRole => userRole.UserId == user.Id
+                        && userRole.Role.Name == "SystemAdmin",
+                    cancellationToken);
 
             if (isSystemAdmin)
             {
@@ -46,6 +48,7 @@ public class ChangeUserStatusCommandHandler : IRequestHandler<ChangeUserStatusCo
             }
         }
 
+        var statusChanged = user.IsActive != request.IsActive;
         if (request.IsActive)
         {
             user.Active();
@@ -53,6 +56,11 @@ public class ChangeUserStatusCommandHandler : IRequestHandler<ChangeUserStatusCo
         else
         {
             user.Inactive();
+        }
+
+        if (statusChanged)
+        {
+            user.AuthorizationVersion = checked(user.AuthorizationVersion + 1);
         }
 
         await _context.SaveChangesAsync(cancellationToken);

@@ -5,6 +5,7 @@ using Google.Apis.Auth.OAuth2.Responses;
 using Google.Apis.Drive.v3;
 using Google.Apis.Http;
 using Google.Apis.Services;
+using System.Text;
 using System.Text.Json;
 
 namespace CleanArchCqrs.Infrastructure.Services.Storage;
@@ -30,7 +31,8 @@ public class GoogleDriveStorageService : IStorageService
             if (root.TryGetProperty("type", out var typeProp) && typeProp.GetString() == "service_account")
             {
                 // Service Account credentials.json
-                credential = GoogleCredential.FromJson(configJson)
+                using var credentialStream = new MemoryStream(Encoding.UTF8.GetBytes(configJson));
+                credential = GoogleCredential.FromStream(credentialStream)
                     .CreateScoped(DriveService.Scope.Drive);
             }
             else if (root.TryGetProperty("refresh_token", out var rtProp))
@@ -55,8 +57,9 @@ public class GoogleDriveStorageService : IStorageService
             }
             else
             {
-                // Fallback attempt standard GoogleCredential
-                credential = GoogleCredential.FromJson(configJson)
+                // Fallback attempt standard GoogleCredential from a stream to avoid the obsolete FromJson API.
+                using var credentialStream = new MemoryStream(Encoding.UTF8.GetBytes(configJson));
+                credential = GoogleCredential.FromStream(credentialStream)
                     .CreateScoped(DriveService.Scope.Drive);
             }
         }

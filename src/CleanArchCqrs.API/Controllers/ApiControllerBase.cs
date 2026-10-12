@@ -1,5 +1,6 @@
 using CleanArchCqrs.Application.Common.Models;
 using MediatR;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -10,6 +11,7 @@ namespace CleanArchCqrs.API.Controllers;
 /// Encapsulates MediatR sender and standardized Result mapping handlers.
 /// </summary>
 [ApiController]
+[Authorize]
 [Route("api/[controller]")]
 public abstract class ApiControllerBase : ControllerBase
 {

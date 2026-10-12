@@ -14,9 +14,28 @@ public class Department : BaseEntity
     public string Code { get; set; } = string.Empty; // Unique code within tenant (e.g., IT, HR)
     public string? Description { get; set; }
     public bool IsActive { get; set; } = true;
+    private long _quotaBytes;
+    private long _usedBytes;
+
+    public long QuotaBytes
+    {
+        get => _quotaBytes;
+        set => _quotaBytes = value >= 0
+            ? value
+            : throw new ArgumentOutOfRangeException(nameof(value), "Quota cannot be negative.");
+    }
+
+    public long UsedBytes
+    {
+        get => _usedBytes;
+        set => _usedBytes = value >= 0
+            ? value
+            : throw new ArgumentOutOfRangeException(nameof(value), "Used bytes cannot be negative.");
+    }
 
     // Navigation properties
     public ICollection<User> Users { get; set; } = new List<User>();
+    public ICollection<UserStorageQuota> UserStorageQuotas { get; set; } = new List<UserStorageQuota>();
 
     public Department() { }
 

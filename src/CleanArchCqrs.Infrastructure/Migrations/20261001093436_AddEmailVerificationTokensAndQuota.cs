@@ -30,6 +30,18 @@ namespace CleanArchCqrs.Infrastructure.Migrations
                 .Annotation("MySql:CharSet", "utf8mb4")
                 .OldAnnotation("MySql:CharSet", "utf8mb4");
 
+            migrationBuilder.RenameTable(
+                name: "Folder",
+                newName: "Folders");
+
+            migrationBuilder.RenameTable(
+                name: "FileEntry",
+                newName: "FileEntries");
+
+            migrationBuilder.RenameTable(
+                name: "FileShare",
+                newName: "FileShares");
+
             migrationBuilder.CreateTable(
                 name: "EmailVerificationTokens",
                 columns: table => new
@@ -58,16 +70,28 @@ namespace CleanArchCqrs.Infrastructure.Migrations
                 })
                 .Annotation("MySql:CharSet", "utf8mb4");
 
-            migrationBuilder.CreateIndex(
-                name: "IX_Roles_Name",
-                table: "Roles",
-                column: "Name",
-                unique: true);
-
-            migrationBuilder.CreateIndex(
-                name: "IX_AuditLogs_TenantId_CreatedAt",
-                table: "AuditLogs",
-                columns: new[] { "TenantId", "CreatedAt" });
+            migrationBuilder.CreateTable(
+                name: "UserStorageQuotas",
+                columns: table => new
+                {
+                    Id = table.Column<Guid>(type: "char(36)", nullable: false, collation: "ascii_general_ci"),
+                    UserId = table.Column<Guid>(type: "char(36)", nullable: false, collation: "ascii_general_ci"),
+                    QuotaBytes = table.Column<long>(type: "bigint", nullable: false),
+                    UsedBytes = table.Column<long>(type: "bigint", nullable: false),
+                    CreatedAt = table.Column<DateTime>(type: "datetime(6)", nullable: false),
+                    UpdatedAt = table.Column<DateTime>(type: "datetime(6)", nullable: true)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_UserStorageQuotas", x => x.Id);
+                    table.ForeignKey(
+                        name: "FK_UserStorageQuotas_Users_UserId",
+                        column: x => x.UserId,
+                        principalTable: "Users",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Cascade);
+                })
+                .Annotation("MySql:CharSet", "utf8mb4");
 
             migrationBuilder.CreateIndex(
                 name: "IX_EmailVerificationTokens_Token",
@@ -84,6 +108,12 @@ namespace CleanArchCqrs.Infrastructure.Migrations
                 name: "IX_EmailVerificationTokens_UserId",
                 table: "EmailVerificationTokens",
                 column: "UserId");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_UserStorageQuotas_UserId",
+                table: "UserStorageQuotas",
+                column: "UserId",
+                unique: true);
         }
 
         /// <inheritdoc />
@@ -92,13 +122,8 @@ namespace CleanArchCqrs.Infrastructure.Migrations
             migrationBuilder.DropTable(
                 name: "EmailVerificationTokens");
 
-            migrationBuilder.DropIndex(
-                name: "IX_Roles_Name",
-                table: "Roles");
-
-            migrationBuilder.DropIndex(
-                name: "IX_AuditLogs_TenantId_CreatedAt",
-                table: "AuditLogs");
+            migrationBuilder.DropTable(
+                name: "UserStorageQuotas");
 
             migrationBuilder.DropColumn(
                 name: "EmailConfirmed",
@@ -115,6 +140,18 @@ namespace CleanArchCqrs.Infrastructure.Migrations
                 oldNullable: true)
                 .Annotation("MySql:CharSet", "utf8mb4")
                 .OldAnnotation("MySql:CharSet", "utf8mb4");
+
+            migrationBuilder.RenameTable(
+                name: "FileShares",
+                newName: "FileShare");
+
+            migrationBuilder.RenameTable(
+                name: "FileEntries",
+                newName: "FileEntry");
+
+            migrationBuilder.RenameTable(
+                name: "Folders",
+                newName: "Folder");
         }
     }
 }

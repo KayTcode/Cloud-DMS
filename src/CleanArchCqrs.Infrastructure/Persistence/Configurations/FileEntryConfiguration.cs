@@ -1,4 +1,5 @@
 using CleanArchCqrs.Domain.Entities;
+using CleanArchCqrs.Domain.Enums;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 
@@ -33,6 +34,21 @@ public class FileEntryConfiguration : IEntityTypeConfiguration<FileEntry>
         builder.Property(f => f.IsDeleted)
             .IsRequired();
 
+        builder.Property(f => f.OwningDepartmentId);
+
+        builder.Property(f => f.Lifecycle)
+            .HasConversion<string>()
+            .HasMaxLength(32)
+            .HasDefaultValue(FileLifecycle.Active)
+            .IsRequired();
+
+        builder.Property(f => f.AuthorizationVersion)
+            .IsRequired()
+            .HasDefaultValue(1L)
+            .IsConcurrencyToken();
+
+        builder.Property(f => f.QuotaReleasedAt);
+
         builder.HasOne(f => f.Tenant)
             .WithMany(t => t.Files)
             .HasForeignKey(f => f.TenantId)
@@ -43,6 +59,11 @@ public class FileEntryConfiguration : IEntityTypeConfiguration<FileEntry>
             .HasForeignKey(f => f.OwnerId)
             .OnDelete(DeleteBehavior.Restrict);
 
+        builder.HasOne(f => f.OwningDepartment)
+            .WithMany()
+            .HasForeignKey(f => f.OwningDepartmentId)
+            .OnDelete(DeleteBehavior.Restrict);
+
         builder.HasOne(f => f.Folder)
             .WithMany(folder => folder.Files)
             .HasForeignKey(f => f.FolderId)
@@ -51,6 +72,7 @@ public class FileEntryConfiguration : IEntityTypeConfiguration<FileEntry>
         builder.HasIndex(f => f.TenantId);
         builder.HasIndex(f => f.OwnerId);
         builder.HasIndex(f => f.FolderId);
+        builder.HasIndex(f => f.OwningDepartmentId);
         builder.HasIndex(f => f.StorageKey)
             .IsUnique();
     }

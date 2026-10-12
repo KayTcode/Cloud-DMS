@@ -1,4 +1,5 @@
 using CleanArchCqrs.Domain.Entities;
+using CleanArchCqrs.Domain.Enums;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 
@@ -35,6 +36,17 @@ public class UserConfiguration : IEntityTypeConfiguration<User>
             .HasMaxLength(25);
 
         builder.Property(u => u.IsActive)
+            .IsRequired();
+
+        builder.Property(u => u.AuthorizationVersion)
+            .IsRequired()
+            .HasDefaultValue(1L)
+            .IsConcurrencyToken();
+
+        builder.Property(u => u.ProvisioningState)
+            .HasConversion<string>()
+            .HasMaxLength(32)
+            .HasDefaultValue(UserProvisioningState.Ready)
             .IsRequired();
 
         builder.Property(u => u.EmailConfirmed)

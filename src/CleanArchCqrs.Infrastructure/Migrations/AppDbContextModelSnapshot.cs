@@ -80,6 +80,106 @@ namespace CleanArchCqrs.Infrastructure.Persistence.Migrations
                     b.ToTable("AuditLogs", (string)null);
                 });
 
+            modelBuilder.Entity("CleanArchCqrs.Domain.Entities.AuthorizationOperation", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("char(36)");
+
+                    b.Property<DateTimeOffset?>("CommittedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<string>("IdempotencyKey")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("varchar(128)");
+
+                    b.Property<Guid?>("InitiatedByUserId")
+                        .HasColumnType("char(36)");
+
+                    b.Property<string>("PayloadHash")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("varchar(128)");
+
+                    b.Property<string>("ScopeKey")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("varchar(255)");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("varchar(32)");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<long>("Version")
+                        .HasColumnType("bigint");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("InitiatedByUserId", "CreatedAt");
+
+                    b.HasIndex("ScopeKey", "IdempotencyKey")
+                        .IsUnique();
+
+                    b.HasIndex("ScopeKey", "Version")
+                        .IsUnique();
+
+                    b.HasIndex("Status", "CreatedAt");
+
+                    b.ToTable("AuthorizationOperations", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_AuthorizationOperations_Version_Positive", "`Version` > 0");
+                        });
+                });
+
+            modelBuilder.Entity("CleanArchCqrs.Domain.Entities.AuthorizationScope", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("char(36)");
+
+                    b.Property<Guid?>("ActiveOperationId")
+                        .HasColumnType("char(36)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<bool>("IsUpdating")
+                        .HasColumnType("tinyint(1)");
+
+                    b.Property<string>("ScopeKey")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("varchar(255)");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<long>("Version")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint")
+                        .HasDefaultValue(1L);
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("IsUpdating");
+
+                    b.HasIndex("ScopeKey")
+                        .IsUnique();
+
+                    b.ToTable("AuthorizationScopes", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_AuthorizationScopes_Version_Positive", "`Version` > 0");
+                        });
+                });
+
             modelBuilder.Entity("CleanArchCqrs.Domain.Entities.Department", b =>
                 {
                     b.Property<Guid>("Id")
@@ -106,18 +206,35 @@ namespace CleanArchCqrs.Infrastructure.Persistence.Migrations
                         .HasMaxLength(200)
                         .HasColumnType("varchar(200)");
 
+                    b.Property<long>("QuotaBytes")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint")
+                        .HasDefaultValue(0L);
+
                     b.Property<Guid>("TenantId")
                         .HasColumnType("char(36)");
 
                     b.Property<DateTime?>("UpdatedAt")
                         .HasColumnType("datetime(6)");
 
+                    b.Property<long>("UsedBytes")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint")
+                        .HasDefaultValue(0L);
+
                     b.HasKey("Id");
 
                     b.HasIndex("TenantId", "Code")
                         .IsUnique();
 
-                    b.ToTable("Departments", (string)null);
+                    b.ToTable("Departments", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_Departments_QuotaBytes_NonNegative", "`QuotaBytes` >= 0");
+
+                            t.HasCheckConstraint("CK_Departments_UsedBytes_Lte_QuotaBytes", "`UsedBytes` <= `QuotaBytes`");
+
+                            t.HasCheckConstraint("CK_Departments_UsedBytes_NonNegative", "`UsedBytes` >= 0");
+                        });
                 });
 
             modelBuilder.Entity("CleanArchCqrs.Domain.Entities.EmailVerificationToken", b =>
@@ -172,6 +289,12 @@ namespace CleanArchCqrs.Infrastructure.Persistence.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("char(36)");
 
+                    b.Property<long>("AuthorizationVersion")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint")
+                        .HasDefaultValue(1L);
+
                     b.Property<string>("ContentType")
                         .IsRequired()
                         .HasMaxLength(255)
@@ -190,6 +313,13 @@ namespace CleanArchCqrs.Infrastructure.Persistence.Migrations
                     b.Property<bool>("IsDeleted")
                         .HasColumnType("tinyint(1)");
 
+                    b.Property<string>("Lifecycle")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(32)
+                        .HasColumnType("varchar(32)")
+                        .HasDefaultValue("Active");
+
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasMaxLength(255)
@@ -197,6 +327,16 @@ namespace CleanArchCqrs.Infrastructure.Persistence.Migrations
 
                     b.Property<Guid>("OwnerId")
                         .HasColumnType("char(36)");
+
+                    b.Property<Guid?>("OwningDepartmentId")
+                        .HasColumnType("char(36)");
+
+                    b.Property<DateTimeOffset?>("QuotaReleasedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<string>("ScanStatus")
+                        .IsRequired()
+                        .HasColumnType("longtext");
 
                     b.Property<long>("SizeBytes")
                         .HasColumnType("bigint");
@@ -220,6 +360,8 @@ namespace CleanArchCqrs.Infrastructure.Persistence.Migrations
                     b.HasIndex("FolderId");
 
                     b.HasIndex("OwnerId");
+
+                    b.HasIndex("OwningDepartmentId");
 
                     b.HasIndex("StorageKey")
                         .IsUnique();
@@ -308,6 +450,46 @@ namespace CleanArchCqrs.Infrastructure.Persistence.Migrations
                     b.ToTable("Folders", (string)null);
                 });
 
+            modelBuilder.Entity("CleanArchCqrs.Domain.Entities.OutboxMessage", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("char(36)");
+
+                    b.Property<string>("AggregateKey")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("varchar(255)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<string>("Payload")
+                        .IsRequired()
+                        .HasColumnType("json");
+
+                    b.Property<DateTimeOffset?>("PublishedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<long>("Version")
+                        .HasColumnType("bigint");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("AggregateKey", "Version")
+                        .IsUnique();
+
+                    b.HasIndex("PublishedAt", "CreatedAt");
+
+                    b.ToTable("OutboxMessages", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_OutboxMessages_Version_Positive", "`Version` > 0");
+                        });
+                });
+
             modelBuilder.Entity("CleanArchCqrs.Domain.Entities.Permission", b =>
                 {
                     b.Property<Guid>("Id")
@@ -366,6 +548,61 @@ namespace CleanArchCqrs.Infrastructure.Persistence.Migrations
                     b.HasKey("Id");
 
                     b.ToTable("Products");
+                });
+
+            modelBuilder.Entity("CleanArchCqrs.Domain.Entities.QuotaReservation", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("char(36)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<Guid>("DepartmentId")
+                        .HasColumnType("char(36)");
+
+                    b.Property<string>("IdempotencyKey")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("varchar(128)");
+
+                    b.Property<long>("SizeBytes")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("State")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("varchar(32)");
+
+                    b.Property<string>("StorageKey")
+                        .HasMaxLength(500)
+                        .HasColumnType("varchar(500)");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("char(36)");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("char(36)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("IdempotencyKey")
+                        .IsUnique();
+
+                    b.HasIndex("DepartmentId", "State");
+
+                    b.HasIndex("TenantId", "State");
+
+                    b.HasIndex("UserId", "State");
+
+                    b.ToTable("QuotaReservations", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_QuotaReservations_SizeBytes_Positive", "`SizeBytes` > 0");
+                        });
                 });
 
             modelBuilder.Entity("CleanArchCqrs.Domain.Entities.RefreshToken", b =>
@@ -583,6 +820,12 @@ namespace CleanArchCqrs.Infrastructure.Persistence.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("char(36)");
 
+                    b.Property<long>("AuthorizationVersion")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint")
+                        .HasDefaultValue(1L);
+
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("datetime(6)");
 
@@ -604,6 +847,12 @@ namespace CleanArchCqrs.Infrastructure.Persistence.Migrations
                         .HasMaxLength(100)
                         .HasColumnType("varchar(100)");
 
+                    b.Property<string>("GoogleIssuer")
+                        .HasColumnType("longtext");
+
+                    b.Property<string>("GoogleSubject")
+                        .HasColumnType("longtext");
+
                     b.Property<bool>("IsActive")
                         .HasColumnType("tinyint(1)");
 
@@ -623,6 +872,13 @@ namespace CleanArchCqrs.Infrastructure.Persistence.Migrations
                     b.Property<string>("PhoneNumber")
                         .HasMaxLength(25)
                         .HasColumnType("varchar(25)");
+
+                    b.Property<string>("ProvisioningState")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(32)
+                        .HasColumnType("varchar(32)")
+                        .HasDefaultValue("Ready");
 
                     b.Property<Guid?>("TenantId")
                         .HasColumnType("char(36)");
@@ -679,6 +935,9 @@ namespace CleanArchCqrs.Infrastructure.Persistence.Migrations
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("datetime(6)");
 
+                    b.Property<Guid>("DepartmentId")
+                        .HasColumnType("char(36)");
+
                     b.Property<long>("QuotaBytes")
                         .HasColumnType("bigint");
 
@@ -693,10 +952,19 @@ namespace CleanArchCqrs.Infrastructure.Persistence.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("UserId")
+                    b.HasIndex("DepartmentId");
+
+                    b.HasIndex("UserId", "DepartmentId")
                         .IsUnique();
 
-                    b.ToTable("UserStorageQuotas", (string)null);
+                    b.ToTable("UserStorageQuotas", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_UserStorageQuotas_QuotaBytes_NonNegative", "`QuotaBytes` >= 0");
+
+                            t.HasCheckConstraint("CK_UserStorageQuotas_UsedBytes_Lte_QuotaBytes", "`UsedBytes` <= `QuotaBytes`");
+
+                            t.HasCheckConstraint("CK_UserStorageQuotas_UsedBytes_NonNegative", "`UsedBytes` >= 0");
+                        });
                 });
 
             modelBuilder.Entity("CleanArchCqrs.Domain.Entities.AuditLog", b =>
@@ -751,6 +1019,11 @@ namespace CleanArchCqrs.Infrastructure.Persistence.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
+                    b.HasOne("CleanArchCqrs.Domain.Entities.Department", "OwningDepartment")
+                        .WithMany()
+                        .HasForeignKey("OwningDepartmentId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
                     b.HasOne("CleanArchCqrs.Domain.Entities.StorageProvider", "StorageProvider")
                         .WithMany("Files")
                         .HasForeignKey("StorageProviderId")
@@ -765,6 +1038,8 @@ namespace CleanArchCqrs.Infrastructure.Persistence.Migrations
                     b.Navigation("Folder");
 
                     b.Navigation("Owner");
+
+                    b.Navigation("OwningDepartment");
 
                     b.Navigation("StorageProvider");
 
@@ -806,6 +1081,33 @@ namespace CleanArchCqrs.Infrastructure.Persistence.Migrations
                     b.Navigation("ParentFolder");
 
                     b.Navigation("Tenant");
+                });
+
+            modelBuilder.Entity("CleanArchCqrs.Domain.Entities.QuotaReservation", b =>
+                {
+                    b.HasOne("CleanArchCqrs.Domain.Entities.Department", "Department")
+                        .WithMany()
+                        .HasForeignKey("DepartmentId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("CleanArchCqrs.Domain.Entities.Tenant", "Tenant")
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("CleanArchCqrs.Domain.Entities.User", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Department");
+
+                    b.Navigation("Tenant");
+
+                    b.Navigation("User");
                 });
 
             modelBuilder.Entity("CleanArchCqrs.Domain.Entities.RefreshToken", b =>
@@ -896,17 +1198,27 @@ namespace CleanArchCqrs.Infrastructure.Persistence.Migrations
 
             modelBuilder.Entity("CleanArchCqrs.Domain.Entities.UserStorageQuota", b =>
                 {
-                    b.HasOne("CleanArchCqrs.Domain.Entities.User", "User")
-                        .WithOne()
-                        .HasForeignKey("CleanArchCqrs.Domain.Entities.UserStorageQuota", "UserId")
-                        .OnDelete(DeleteBehavior.Cascade)
+                    b.HasOne("CleanArchCqrs.Domain.Entities.Department", "Department")
+                        .WithMany("UserStorageQuotas")
+                        .HasForeignKey("DepartmentId")
+                        .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
+
+                    b.HasOne("CleanArchCqrs.Domain.Entities.User", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Department");
 
                     b.Navigation("User");
                 });
 
             modelBuilder.Entity("CleanArchCqrs.Domain.Entities.Department", b =>
                 {
+                    b.Navigation("UserStorageQuotas");
+
                     b.Navigation("Users");
                 });
 

@@ -46,3 +46,4 @@ BenchmarkDotNet.Artifacts/
 *.log
 *.vspscc
 *.vssscc
+deploy/.local/

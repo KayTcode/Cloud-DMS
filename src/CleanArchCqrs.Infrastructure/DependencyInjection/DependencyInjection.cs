@@ -4,9 +4,15 @@ using CleanArchCqrs.Infrastructure.Persistence;
 using CleanArchCqrs.Infrastructure.Persistence.Configuations;
 using CleanArchCqrs.Infrastructure.Repositories;
 using CleanArchCqrs.Infrastructure.Services;
+using CleanArchCqrs.Infrastructure.Services.Auth;
+using CleanArchCqrs.Infrastructure.Security;
+using CleanArchCqrs.Infrastructure.Workers;
+using CleanArchCqrs.Application.Common.Authorization;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Options;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -24,12 +30,34 @@ namespace CleanArchCqrs.Infrastructure.DependencyInjection
             // Services
             services.AddSingleton<IDateTimeProvider, DateTimeProvider>();
 
+            services.Configure<GoogleAuthOptions>(configuration.GetSection("GoogleAuth"));
             services.AddScoped<IPasswordHasher, PasswordHasher>();
+
+            services.Configure<RedisOptions>(configuration.GetSection(RedisOptions.SectionName));
+            services.AddSingleton<RedisSecurityClient>();
+            services.AddSingleton<ISecurityRedis>(provider =>
+                provider.GetRequiredService<RedisSecurityClient>());
+            services.AddSingleton<ISecurityReadiness, RedisReadiness>();
+            services.AddScoped<IAccessSnapshotStore, RedisAccessSnapshotStore>();
+            services.AddScoped<IAuthorizationService, AuthorizationService>();
+            services.AddScoped<IAuthorizationMutationCoordinator, AuthorizationMutationCoordinator>();
+            services.AddScoped<IAuthorizationProjectionWriter, AuthorizationProjectionWriter>();
+            services.AddHostedService<AuthorizationOutboxWorker>();
+            services.AddSingleton<AccessPolicyEvaluator>();
 
             // JWT
             services.Configure<JwtOptions>(configuration.GetSection(JwtOptions.SectionName));
 
             services.AddScoped<IJwtTokenService, JwtTokenService>();
+            services.AddScoped<IGoogleAuthService>(provider =>
+                new GoogleAuthService(
+                    new HttpClient(),
+                    provider.GetRequiredService<IMemoryCache>(),
+                    provider.GetRequiredService<IOptions<GoogleAuthOptions>>(),
+                    provider.GetRequiredService<IUserRepository>(),
+                    provider.GetRequiredService<IUserAuthorizationRepository>(),
+                    provider.GetRequiredService<IJwtTokenService>(),
+                    provider.GetRequiredService<IApplicationDbContext>()));
             services.AddScoped<IEmailService, EmailService>();
             services.AddScoped<IUserRepository, UserRepository>();
             services.AddScoped<IUserAuthorizationRepository, UserAuthorizationRepository>();

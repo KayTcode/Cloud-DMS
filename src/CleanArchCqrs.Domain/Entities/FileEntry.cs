@@ -1,4 +1,5 @@
 using CleanArchCqrs.Domain.Common;
+using CleanArchCqrs.Domain.Enums;
 
 namespace CleanArchCqrs.Domain.Entities;
 
@@ -7,6 +8,8 @@ public class FileEntry : BaseEntity
     public Guid TenantId { get; set; }
 
     public Guid OwnerId { get; set; }
+
+    public Guid? OwningDepartmentId { get; set; }
 
     public Guid? FolderId { get; set; }
 
@@ -24,12 +27,20 @@ public class FileEntry : BaseEntity
 
     public bool IsDeleted { get; set; }
 
+    public FileLifecycle Lifecycle { get; set; } = FileLifecycle.Active;
+
+    public long AuthorizationVersion { get; set; } = 1;
+
+    public DateTimeOffset? QuotaReleasedAt { get; set; }
+
     public Guid? StorageProviderId { get; set; }
     public StorageProvider? StorageProvider { get; set; }
 
     public Tenant Tenant { get; set; } = null!;
 
     public User Owner { get; set; } = null!;
+
+    public Department? OwningDepartment { get; set; }
 
     public Folder? Folder { get; set; }
 

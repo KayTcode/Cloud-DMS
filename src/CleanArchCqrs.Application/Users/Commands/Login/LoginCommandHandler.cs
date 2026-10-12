@@ -1,12 +1,11 @@
 using CleanArchCqrs.Application.Common.Interfaces;
 using CleanArchCqrs.Application.Common.Interfaces.Repositorires;
 using CleanArchCqrs.Application.Users.DTOs;
+using CleanArchCqrs.Domain.Entities;
 using MediatR;
-using System;
-using System.Collections.Generic;
-using System.Linq;
+using System.Security.Cryptography;
 using System.Text;
-using System.Threading.Tasks;
+using DomainRefreshToken = CleanArchCqrs.Domain.Entities.RefreshToken;
 
 namespace CleanArchCqrs.Application.Users.Commands.Login
 {
@@ -16,13 +15,20 @@ namespace CleanArchCqrs.Application.Users.Commands.Login
         private readonly IPasswordHasher _passswordHasher;
         private readonly IJwtTokenService _jwtTokenService;
         private readonly IUserAuthorizationRepository _userAuthorizationRepository;
+        private readonly IApplicationDbContext _context;
 
-        public LoginCommandHandler(IUserRepository userRepository, IPasswordHasher passswordHasher, IJwtTokenService jwtTokenService, IUserAuthorizationRepository userAuthorizationRepository)
+        public LoginCommandHandler(
+            IUserRepository userRepository,
+            IPasswordHasher passswordHasher,
+            IJwtTokenService jwtTokenService,
+            IUserAuthorizationRepository userAuthorizationRepository,
+            IApplicationDbContext context)
         {
             _userRepository = userRepository;
             _passswordHasher = passswordHasher;
             _jwtTokenService = jwtTokenService;
             _userAuthorizationRepository = userAuthorizationRepository;
+            _context = context;
         }
 
         public async Task<LoginResponseDto> Handle(LoginCommand request, CancellationToken cancellationToken)
@@ -54,14 +60,37 @@ namespace CleanArchCqrs.Application.Users.Commands.Login
                 throw new UnauthorizedAccessException(
                     "Invalid email or password.");
             }
+
+            if (!user.EmailConfirmed)
+            {
+                throw new UnauthorizedAccessException(
+                    "Email chưa được xác nhận. Vui lòng xác nhận email trước khi đăng nhập.");
+            }
+
             var role = await _userAuthorizationRepository.GetRoleAsync(user.Id, cancellationToken);
             var permissions =
                 await _userAuthorizationRepository.GetPermissionsAsync(
                     user.Id,
                     cancellationToken);
 
+            var resolvedRole = role ?? "Employee";
             var token =
-                _jwtTokenService.GenerateAccessToken(user, role, permissions);
+                _jwtTokenService.GenerateAccessToken(user, resolvedRole, permissions);
+
+            var refreshToken = Guid.NewGuid().ToString("N");
+            var refreshTokenExpiresAt = DateTime.UtcNow.AddDays(7);
+            var refreshTokenHash = HashRefreshToken(refreshToken);
+
+            await _context.RefreshTokens.AddAsync(
+                new DomainRefreshToken(
+                    Guid.NewGuid(),
+                    user.Id,
+                    refreshTokenHash,
+                    refreshTokenExpiresAt,
+                    null),
+                cancellationToken);
+
+            await _context.SaveChangesAsync(cancellationToken);
 
             return new LoginResponseDto(
                 token.AccessToken,
@@ -69,9 +98,18 @@ namespace CleanArchCqrs.Application.Users.Commands.Login
                 user.Id,
                 user.Email,
                 user.FullName,
-                role ?? "Employee",
+                resolvedRole,
                 user.TenantId,
-                permissions.ToList());
+                permissions.ToList(),
+                refreshToken,
+                refreshTokenExpiresAt);
+        }
+
+        private static string HashRefreshToken(string refreshToken)
+        {
+            using var sha256 = SHA256.Create();
+            var bytes = sha256.ComputeHash(Encoding.UTF8.GetBytes(refreshToken));
+            return Convert.ToHexString(bytes);
         }
     }
 }
