@@ -353,35 +353,6 @@ namespace CleanArchCqrs.Infrastructure.Persistence
                 await context.SaveChangesAsync();
             }
 
-            // 2. Seed Demo Department
-            var itDept = await context.Departments.FirstOrDefaultAsync(d => d.TenantId == acmeTenant.Id && d.Code == "IT");
-            if (itDept == null)
-            {
-                itDept = new Department(
-                    Guid.NewGuid(),
-                    acmeTenant.Id,
-                    "Information Technology",
-                    "IT",
-                    50L * 1024 * 1024 * 1024) // 50 GB
-                {
-                    Description = "Core Engineering and IT Infrastructure"
-                };
-                await context.Departments.AddAsync(itDept);
-                await context.SaveChangesAsync();
-            }
-            else if (itDept.StorageQuotaBytes <= 0)
-            {
-                itDept.StorageQuotaBytes = 50L * 1024 * 1024 * 1024;
-                await context.SaveChangesAsync();
-            }
-
-            // Roles
-            var sysAdminRole = await context.Roles.FirstOrDefaultAsync(r => r.Name == "SystemAdmin");
-            var tenantAdminRole = await context.Roles.FirstOrDefaultAsync(r => r.Name == "TenantAdmin");
-            var deptAdminRole = await context.Roles.FirstOrDefaultAsync(r => r.Name == "DepartmentAdmin") 
-                                ?? await context.Roles.FirstOrDefaultAsync(r => r.Name == "Manager");
-            var employeeRole = await context.Roles.FirstOrDefaultAsync(r => r.Name == "Employee");
-
             // 3. Seed System Admin Account
             var sysAdminEmail = "admin@clouddms.com";
             var sysAdminUser = await context.Users.FirstOrDefaultAsync(u => u.Email == sysAdminEmail);
@@ -407,7 +378,7 @@ namespace CleanArchCqrs.Infrastructure.Persistence
                 }
             }
 
-            // 4. Seed Tenant Admin Account
+            // 4. Seed Tenant Admin Account (không gắn phòng ban ban đầu)
             var tenantAdminEmail = "tenant@acme.com";
             var tenantAdminUser = await context.Users.FirstOrDefaultAsync(u => u.Email == tenantAdminEmail);
             if (tenantAdminUser == null)
@@ -415,7 +386,7 @@ namespace CleanArchCqrs.Infrastructure.Persistence
                 var passwordHash = passwordHasher.Hash("Tenant@123");
                 tenantAdminUser = new User(
                     tenantId: acmeTenant.Id,
-                    departmentId: itDept.Id,
+                    departmentId: null,
                     email: tenantAdminEmail,
                     passwordHash: passwordHash,
                     firstName: "Alice",
@@ -441,84 +412,6 @@ namespace CleanArchCqrs.Infrastructure.Persistence
                     Id = Guid.NewGuid(),
                     UserId = tenantAdminUser.Id,
                     QuotaBytes = 0L,
-                    UsedBytes = 0L
-                });
-                await context.SaveChangesAsync();
-            }
-
-            // 5. Seed Department Admin Account
-            var deptAdminEmail = "deptadmin@acme.com";
-            var deptAdminUser = await context.Users.FirstOrDefaultAsync(u => u.Email == deptAdminEmail);
-            if (deptAdminUser == null)
-            {
-                var passwordHash = passwordHasher.Hash("DeptAdmin@123");
-                deptAdminUser = new User(
-                    tenantId: acmeTenant.Id,
-                    departmentId: itDept.Id,
-                    email: deptAdminEmail,
-                    passwordHash: passwordHash,
-                    firstName: "David",
-                    lastName: "Department Lead",
-                    phoneNumber: "+84 912 345 678"
-                );
-                await context.Users.AddAsync(deptAdminUser);
-                await context.SaveChangesAsync();
-
-                if (deptAdminRole != null)
-                {
-                    await context.UserRoles.AddAsync(new UserRole(Guid.NewGuid(), deptAdminUser.Id, deptAdminRole.Id));
-                    await context.SaveChangesAsync();
-                }
-            }
-
-            // Ensure Department Admin has UserStorageQuota (15 GB)
-            var deptAdminQuota = await context.UserStorageQuotas.FirstOrDefaultAsync(q => q.UserId == deptAdminUser.Id);
-            if (deptAdminQuota == null)
-            {
-                await context.UserStorageQuotas.AddAsync(new UserStorageQuota
-                {
-                    Id = Guid.NewGuid(),
-                    UserId = deptAdminUser.Id,
-                    QuotaBytes = 15L * 1024 * 1024 * 1024,
-                    UsedBytes = 0L
-                });
-                await context.SaveChangesAsync();
-            }
-
-            // 6. Seed Employee / User Account
-            var userEmail = "user@acme.com";
-            var normalUser = await context.Users.FirstOrDefaultAsync(u => u.Email == userEmail);
-            if (normalUser == null)
-            {
-                var passwordHash = passwordHasher.Hash("User@123");
-                normalUser = new User(
-                    tenantId: acmeTenant.Id,
-                    departmentId: itDept.Id,
-                    email: userEmail,
-                    passwordHash: passwordHash,
-                    firstName: "Alex",
-                    lastName: "Mercer",
-                    phoneNumber: "+84 914 829 901"
-                );
-                await context.Users.AddAsync(normalUser);
-                await context.SaveChangesAsync();
-
-                if (employeeRole != null)
-                {
-                    await context.UserRoles.AddAsync(new UserRole(Guid.NewGuid(), normalUser.Id, employeeRole.Id));
-                    await context.SaveChangesAsync();
-                }
-            }
-
-            // Ensure Employee has UserStorageQuota (10 GB)
-            var normalUserQuota = await context.UserStorageQuotas.FirstOrDefaultAsync(q => q.UserId == normalUser.Id);
-            if (normalUserQuota == null)
-            {
-                await context.UserStorageQuotas.AddAsync(new UserStorageQuota
-                {
-                    Id = Guid.NewGuid(),
-                    UserId = normalUser.Id,
-                    QuotaBytes = 10L * 1024 * 1024 * 1024,
                     UsedBytes = 0L
                 });
                 await context.SaveChangesAsync();
