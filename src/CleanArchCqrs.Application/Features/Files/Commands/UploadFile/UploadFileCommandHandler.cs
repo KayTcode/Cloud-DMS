@@ -1,3 +1,4 @@
+using System.Data;
 using System.Security.Cryptography;
 using CleanArchCqrs.Application.Common.Interfaces;
 using CleanArchCqrs.Application.Common.Models;
@@ -93,7 +94,12 @@ public class UploadFileCommandHandler : IRequestHandler<UploadFileCommand, Resul
         var userQuota = await _context.UserStorageQuotas
             .FirstOrDefaultAsync(q => q.UserId == userId, cancellationToken);
 
-        if (userQuota != null && userQuota.UsedBytes + request.FileSize > userQuota.QuotaBytes)
+        if (userQuota is null)
+        {
+            return Result<FileEntryDto>.Failure("Người dùng chưa được cấp hạn mức lưu trữ cá nhân.");
+        }
+
+        if (userQuota.UsedBytes + request.FileSize > userQuota.QuotaBytes)
         {
             return Result<FileEntryDto>.Failure(
                 $"Hết dung lượng cá nhân được phân bổ! (Đã dùng: {FormatBytes(userQuota.UsedBytes)} / Hạn mức: {FormatBytes(userQuota.QuotaBytes)}).");
@@ -191,6 +197,8 @@ public class UploadFileCommandHandler : IRequestHandler<UploadFileCommand, Resul
             Id = Guid.NewGuid(),
             TenantId = tenant.Id,
             OwnerId = userId,
+            OwningDepartmentId = user.DepartmentId,
+            DepartmentId = user.DepartmentId,
             FolderId = request.FolderId,
             Name = request.FileName,
             StorageKey = storageKey,
@@ -203,19 +211,44 @@ public class UploadFileCommandHandler : IRequestHandler<UploadFileCommand, Resul
             CreatedAt = DateTime.UtcNow
         };
 
-        _context.FileEntries.Add(fileEntry);
+        // All writers use SQL deltas against the current row. The quota reads above
+        // are advisory because scanning and object storage can take arbitrarily long.
+        await using var transaction = await _context.Database.BeginTransactionAsync(IsolationLevel.ReadCommitted, cancellationToken);
+        var tenantUpdated = await _context.Tenants.IgnoreQueryFilters()
+            .Where(t => t.Id == tenant.Id && t.StorageUsedBytes <= t.StorageQuotaBytes - request.FileSize)
+            .ExecuteUpdateAsync(s => s.SetProperty(t => t.StorageUsedBytes,
+                t => t.StorageUsedBytes + request.FileSize), cancellationToken);
+        if (tenantUpdated != 1)
+            return Result<FileEntryDto>.Failure("Hết dung lượng lưu trữ của Tenant.");
 
-        // Cập nhật dung lượng Tenant
-        tenant.StorageUsedBytes += request.FileSize;
-
-        // Cập nhật dung lượng Provider
-        provider.UsedCapacityBytes += request.FileSize;
-
-        // Cập nhật dung lượng cá nhân User nếu có
-        if (userQuota != null)
+        if (user.DepartmentId.HasValue)
         {
-            userQuota.UsedBytes += request.FileSize;
+            var departmentUpdated = await _context.Departments.IgnoreQueryFilters()
+                .Where(d => d.Id == user.DepartmentId && d.TenantId == tenant.Id
+                    && d.UsedBytes <= d.QuotaBytes - request.FileSize)
+                .ExecuteUpdateAsync(s => s.SetProperty(d => d.UsedBytes,
+                    d => d.UsedBytes + request.FileSize), cancellationToken);
+            if (departmentUpdated != 1)
+                return Result<FileEntryDto>.Failure("Hết dung lượng lưu trữ của phòng ban.");
         }
+
+        var userUpdated = await _context.UserStorageQuotas.IgnoreQueryFilters()
+            .Where(q => q.Id == userQuota.Id && q.UserId == userId
+                && q.UsedBytes <= q.QuotaBytes - request.FileSize)
+            .ExecuteUpdateAsync(s => s.SetProperty(q => q.UsedBytes,
+                q => q.UsedBytes + request.FileSize), cancellationToken);
+        if (userUpdated != 1)
+            return Result<FileEntryDto>.Failure("Hết dung lượng cá nhân được phân bổ.");
+
+        var providerUpdated = await _context.StorageProviders.IgnoreQueryFilters()
+            .Where(p => p.Id == provider.Id && (p.TotalCapacityBytes <= 0
+                || p.UsedCapacityBytes <= p.TotalCapacityBytes - request.FileSize))
+            .ExecuteUpdateAsync(s => s.SetProperty(p => p.UsedCapacityBytes,
+                p => p.UsedCapacityBytes + request.FileSize), cancellationToken);
+        if (providerUpdated != 1)
+            return Result<FileEntryDto>.Failure("Kho lưu trữ đã đầy dung lượng.");
+
+        _context.FileEntries.Add(fileEntry);
 
         // Ghi AuditLog
         var auditLog = new AuditLog
@@ -232,6 +265,7 @@ public class UploadFileCommandHandler : IRequestHandler<UploadFileCommand, Resul
         _context.AuditLogs.Add(auditLog);
 
         await _context.SaveChangesAsync(cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
 
         _logger.LogInformation("Successfully uploaded file {FileName} with ID {FileId} to {ProviderType}", 
             request.FileName, fileEntry.Id, provider.Type);

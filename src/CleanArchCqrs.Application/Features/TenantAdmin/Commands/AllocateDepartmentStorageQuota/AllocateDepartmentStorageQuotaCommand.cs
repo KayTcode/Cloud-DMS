@@ -87,7 +87,7 @@ public class AllocateDepartmentStorageQuotaCommandHandler : IRequestHandler<Allo
                 // 3. Kiểm tra: Tổng hạn mức của tất cả phòng ban không được vượt quá hạn mức Tenant
                 var otherDepartmentsQuota = await _context.Departments
                     .Where(d => d.TenantId == tenant.Id && d.Id != department.Id)
-                    .SumAsync(d => d.StorageQuotaBytes, cancellationToken);
+                    .SumAsync(d => d.QuotaBytes, cancellationToken);
 
                 var availableInTenant = Math.Max(0, tenant.StorageQuotaBytes - otherDepartmentsQuota);
 

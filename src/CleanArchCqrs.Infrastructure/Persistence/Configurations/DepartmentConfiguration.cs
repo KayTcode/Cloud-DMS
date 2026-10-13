@@ -17,6 +17,14 @@ public class DepartmentConfiguration : IEntityTypeConfiguration<Department>
 
         builder.HasKey(d => d.Id);
 
+        // Compatibility properties share the same backing fields. Mapping both pairs
+        // makes materialization overwrite canonical quota values with legacy columns.
+        builder.Ignore(d => d.StorageQuotaBytes);
+        builder.Ignore(d => d.StorageUsedBytes);
+        // Retain the physical compatibility columns for existing databases and future migrations.
+        builder.Property<long>("LegacyStorageQuotaBytes").HasColumnName("StorageQuotaBytes").HasDefaultValue(0L);
+        builder.Property<long>("LegacyStorageUsedBytes").HasColumnName("StorageUsedBytes").HasDefaultValue(0L);
+
         builder.Property(d => d.Name)
             .IsRequired()
             .HasMaxLength(200);

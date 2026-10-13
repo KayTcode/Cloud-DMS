@@ -53,6 +53,7 @@ namespace CleanArchCqrs.Infrastructure.DependencyInjection
             services.AddScoped<IFileAccessContextResolver, FileAccessContextResolver>();
             services.AddScoped<IFileAclQuery, FileAclQuery>();
             services.AddScoped<IFileAccessService, FileAccessService>();
+            services.AddScoped<IQuotaReleaseWriter, MySqlQuotaReleaseWriter>();
             services.AddScoped<CleanArchCqrs.Application.Features.Files.Commands.ManageAccess.FileMutationService>();
             services.AddScoped<IGoogleAuthService>(provider =>
                 new GoogleAuthService(

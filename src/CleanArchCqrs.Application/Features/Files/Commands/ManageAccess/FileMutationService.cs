@@ -18,7 +18,8 @@ public sealed class FileMutationService(
     IFileAccessService access,
     IFileAclQuery acl,
     AccessPolicyEvaluator evaluator,
-    IAuthorizationMutationCoordinator coordinator)
+    IAuthorizationMutationCoordinator coordinator,
+    IQuotaReleaseWriter quotaReleaseWriter)
 {
     public async Task<MutationReceipt> ChangeLifecycleAsync(
         Guid id, FileLifecycle lifecycle, string idempotencyKey, CancellationToken ct)
@@ -67,7 +68,13 @@ public sealed class FileMutationService(
             file.DeletedAt = file.IsDeleted ? DateTime.UtcNow : null;
             file.DeletedByUserId = file.IsDeleted ? context.Actor.UserId : null;
             if (lifecycle == FileLifecycle.Purging)
-                await ReleaseQuotaAsync(file, token);
+            {
+                if (!file.QuotaReleasedAt.HasValue)
+                {
+                    await quotaReleaseWriter.ReleaseAsync(file, token);
+                    file.QuotaReleasedAt = DateTimeOffset.UtcNow;
+                }
+            }
 
             db.DocumentOutboxMessages.Add(new()
             {
@@ -335,40 +342,6 @@ public sealed class FileMutationService(
                 && s.SharedWithUserId == command.PrincipalId).ToArrayAsync(ct);
             db.FileShares.RemoveRange(legacy);
         }
-    }
-
-    private async Task ReleaseQuotaAsync(FileEntry file, CancellationToken ct)
-    {
-        if (file.QuotaReleasedAt.HasValue)
-            return;
-        var tenant = await db.Tenants.IgnoreQueryFilters().SingleAsync(t => t.Id == file.TenantId, ct);
-        tenant.StorageUsedBytes = Math.Max(0, tenant.StorageUsedBytes - file.SizeBytes);
-        var departmentId = file.OwningDepartmentId ?? file.DepartmentId;
-        if (!departmentId.HasValue)
-            departmentId = await db.Users.IgnoreQueryFilters().Where(u => u.TenantId == file.TenantId && u.Id == file.OwnerId)
-                .Select(u => u.DepartmentId).SingleOrDefaultAsync(ct);
-        if (departmentId.HasValue)
-        {
-            var department = await db.Departments.IgnoreQueryFilters()
-                .SingleOrDefaultAsync(d => d.TenantId == file.TenantId && d.Id == departmentId, ct);
-            if (department is not null)
-                department.UsedBytes = Math.Max(0, department.UsedBytes - file.SizeBytes);
-        }
-        var quota = await (from q in db.UserStorageQuotas.IgnoreQueryFilters()
-                           join u in db.Users.IgnoreQueryFilters() on q.UserId equals u.Id
-                           where u.TenantId == file.TenantId && q.UserId == file.OwnerId
-                           select q).SingleOrDefaultAsync(ct);
-        if (quota is not null)
-            quota.UsedBytes = Math.Max(0, quota.UsedBytes - file.SizeBytes);
-        // Shared provider: update only the provider referenced by this tenant-scoped file.
-        if (file.StorageProviderId.HasValue)
-        {
-            var provider = await db.StorageProviders.IgnoreQueryFilters()
-                .SingleOrDefaultAsync(p => p.Id == file.StorageProviderId, ct);
-            if (provider is not null)
-                provider.UsedCapacityBytes = Math.Max(0, provider.UsedCapacityBytes - file.SizeBytes);
-        }
-        file.QuotaReleasedAt = DateTimeOffset.UtcNow;
     }
 
     private static MutationRequest CreateRequest(FileAccessContext context, string key, object payload)

@@ -11,6 +11,31 @@ using Microsoft.EntityFrameworkCore;
 namespace CleanArchCqrs.Tests.Common;
 public sealed class FileMutationFixture
 {
+    // The InMemory provider has no ExecuteUpdate. MySQL counter semantics are covered
+    // by QuotaWriterIntegrationTests; this adapter keeps lifecycle tests focused.
+    private sealed class InMemoryQuotaReleaseWriter(AppDbContext db) : IQuotaReleaseWriter
+    {
+        public Task ReleaseAsync(FileEntry file, CancellationToken ct)
+        {
+            var tenant = db.Tenants.Single(t => t.Id == file.TenantId);
+            tenant.StorageUsedBytes = Math.Max(0, tenant.StorageUsedBytes - file.SizeBytes);
+            var departmentId = file.OwningDepartmentId ?? file.DepartmentId
+                ?? db.Users.Single(u => u.Id == file.OwnerId).DepartmentId;
+            if (departmentId.HasValue)
+            {
+                var department = db.Departments.SingleOrDefault(d => d.TenantId == file.TenantId && d.Id == departmentId);
+                if (department is not null) department.UsedBytes = Math.Max(0, department.UsedBytes - file.SizeBytes);
+            }
+            var quota = db.UserStorageQuotas.SingleOrDefault(q => q.UserId == file.OwnerId);
+            if (quota is not null) quota.UsedBytes = Math.Max(0, quota.UsedBytes - file.SizeBytes);
+            if (file.StorageProviderId.HasValue)
+            {
+                var provider = db.StorageProviders.SingleOrDefault(p => p.Id == file.StorageProviderId);
+                if (provider is not null) provider.UsedCapacityBytes = Math.Max(0, provider.UsedCapacityBytes - file.SizeBytes);
+            }
+            return Task.CompletedTask;
+        }
+    }
     public AppDbContext Db { get; }
     public User User { get; }
     public RefreshToken Session { get; }
@@ -33,6 +58,6 @@ public sealed class FileMutationFixture
             scope.Version++;
             var operation = new AuthorizationOperation { InitiatedByUserId = actor, ScopeKey = request.ScopeKey, IdempotencyKey = request.IdempotencyKey, PayloadHash = request.PayloadHash, Version = scope.Version, Status = AuthorizationOperationStatus.Applied }; db.AuthorizationOperations.Add(operation); await db.SaveChangesAsync(ct); return new MutationReceipt(operation.Id, operation.Version, operation.Status);
         });
-        var acl = new FileAclQuery(db); var evaluator = new AccessPolicyEvaluator(); Service = new(db, resolver.Object, snapshots.Object, new FileAccessService(snapshots.Object, acl, evaluator), acl, evaluator, coordinator.Object);
+        var acl = new FileAclQuery(db); var evaluator = new AccessPolicyEvaluator(); Service = new(db, resolver.Object, snapshots.Object, new FileAccessService(snapshots.Object, acl, evaluator), acl, evaluator, coordinator.Object, new InMemoryQuotaReleaseWriter(db));
     }
 }
