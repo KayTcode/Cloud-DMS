@@ -195,12 +195,23 @@ public class UploadFileCommandHandler : IRequestHandler<UploadFileCommand, Resul
             ? request.FolderId.Value.ToString() 
             : provider.RootFolderId;
 
+        if (storageService is not IIntentObjectStorage intentStorage)
+            return Result<FileEntryDto>.Failure("Nhà cung cấp lưu trữ không hỗ trợ upload có thể khôi phục.");
+        var fileId = Guid.NewGuid();
+        var intent = new LegacyUploadIntent
+        {
+            TenantId = tenant.Id, UserId = userId, ProviderId = provider.Id,
+            FileId = fileId, ParentFolderId = destinationFolderId,
+            ExpiresAt = DateTimeOffset.UtcNow.AddMinutes(30)
+        };
+        _context.LegacyUploadIntents.Add(intent);
+        await _context.SaveChangesAsync(cancellationToken);
         string storageKey;
         try
         {
-            storageKey = await storageService.UploadFileAsync(
+            storageKey = await intentStorage.UploadForIntentAsync(
                 request.FileStream,
-                request.FileName,
+                intent.Id,
                 request.ContentType,
                 destinationFolderId,
                 cancellationToken);
@@ -214,7 +225,7 @@ public class UploadFileCommandHandler : IRequestHandler<UploadFileCommand, Resul
         // BƯỚC 5: Cập nhật CSDL (Atomic Persistence & Quota updates)
         var fileEntry = new FileEntry
         {
-            Id = Guid.NewGuid(),
+            Id = fileId,
             TenantId = tenant.Id,
             OwnerId = userId,
             OwningDepartmentId = user.DepartmentId,
@@ -222,7 +233,7 @@ public class UploadFileCommandHandler : IRequestHandler<UploadFileCommand, Resul
             FolderId = request.FolderId,
             Name = request.FileName,
             StorageKey = storageKey,
-            ContentType = request.ContentType,
+            ContentType = "application/octet-stream",
             SizeBytes = request.FileSize,
             Hash = hashHex,
             ScanStatus = "Clean",
@@ -240,6 +251,12 @@ public class UploadFileCommandHandler : IRequestHandler<UploadFileCommand, Resul
                 userId, async token =>
                 {
                     await _authorization.AssertCurrentAsync(uploadContext, authorizedUser, scopeStamps, token);
+                    var claimed = await _context.LegacyUploadIntents.IgnoreQueryFilters()
+                        .Where(i => i.Id == intent.Id && i.Status == "Pending"
+                            && i.ExpiresAt > DateTimeOffset.UtcNow)
+                        .ExecuteUpdateAsync(s => s.SetProperty(i => i.Status, "Committed"), token);
+                    if (claimed != 1)
+                        throw new InvalidOperationException("Upload intent has expired.");
                     await _quota.ReserveAsync(tenant.Id, user.DepartmentId, userId,
                         provider.Id, request.FileSize, token);
                     _context.FileEntries.Add(fileEntry);
@@ -247,7 +264,7 @@ public class UploadFileCommandHandler : IRequestHandler<UploadFileCommand, Resul
                     {
                         TenantId = tenant.Id, FileId = fileEntry.Id, DocumentVersion = 1,
                         ObjectKey = storageKey, ProviderId = provider.Id,
-                        ContentType = request.ContentType, SizeBytes = request.FileSize,
+                        ContentType = "application/octet-stream", SizeBytes = request.FileSize,
                         Hash = hashHex, ScanStatus = CleanArchCqrs.Domain.Enums.FileScanStatus.Clean
                     });
                     _context.DocumentOutboxMessages.Add(new DocumentOutboxMessage
@@ -266,8 +283,9 @@ public class UploadFileCommandHandler : IRequestHandler<UploadFileCommand, Resul
         }
         catch (UploadQuotaExceededException ex)
         {
-            // Known validation failure occurs before commit. An uncertain commit is never deleted here.
-            await storageService.DeleteFileAsync(storageKey, CancellationToken.None);
+            await _context.LegacyUploadIntents.IgnoreQueryFilters()
+                .Where(i => i.Id == intent.Id && i.Status == "Pending")
+                .ExecuteUpdateAsync(s => s.SetProperty(i => i.Status, "Abandoned"), CancellationToken.None);
             return Result<FileEntryDto>.Failure(ex.Message);
         }
 

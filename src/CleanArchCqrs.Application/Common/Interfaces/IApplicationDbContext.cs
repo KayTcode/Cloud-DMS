@@ -11,6 +11,7 @@ public interface IApplicationDbContext
     DbSet<FilePreviewArtifact> FilePreviewArtifacts { get; }
     DbSet<DocumentOutboxMessage> DocumentOutboxMessages { get; }
     DbSet<FileUploadSession> FileUploadSessions { get; }
+    DbSet<LegacyUploadIntent> LegacyUploadIntents { get; }
     DbSet<Team> Teams { get; }
     DbSet<TeamMember> TeamMembers { get; }
     DbSet<ResourceGrant> ResourceGrants { get; }

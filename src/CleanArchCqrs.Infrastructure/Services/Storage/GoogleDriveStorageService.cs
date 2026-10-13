@@ -10,7 +10,7 @@ using System.Text.Json;
 
 namespace CleanArchCqrs.Infrastructure.Services.Storage;
 
-public class GoogleDriveStorageService : IStorageService
+public class GoogleDriveStorageService : IStorageService, IIntentObjectStorage
 {
     private readonly DriveService _driveService;
 
@@ -93,6 +93,28 @@ public class GoogleDriveStorageService : IStorageService
         }
 
         return request.ResponseBody.Id;
+    }
+
+    public Task<string> UploadForIntentAsync(Stream stream, Guid intentId, string contentType,
+        string? parentFolderId, CancellationToken cancellationToken) =>
+        UploadFileAsync(stream, $"dms-legacy-{intentId:N}", contentType, parentFolderId, cancellationToken);
+
+    public async Task<IReadOnlyList<string>> FindIntentObjectsAsync(Guid intentId,
+        string? parentFolderId, CancellationToken cancellationToken)
+    {
+        var name = $"dms-legacy-{intentId:N}";
+        var request = _driveService.Files.List();
+        request.Q = $"name = '{name}' and trashed = false";
+        request.Fields = "nextPageToken, files(id)";
+        var ids = new List<string>();
+        do
+        {
+            var response = await request.ExecuteAsync(cancellationToken);
+            ids.AddRange(response.Files?.Where(f => !string.IsNullOrEmpty(f.Id)).Select(f => f.Id)
+                ?? Array.Empty<string>());
+            request.PageToken = response.NextPageToken;
+        } while (!string.IsNullOrEmpty(request.PageToken));
+        return ids;
     }
 
     public async Task<Stream> DownloadFileAsync(string storageKey, CancellationToken cancellationToken = default)

@@ -25,4 +25,10 @@ public class FileUploadSession : BaseEntity
     public long ReservedBytes { get; set; }
     public DateTimeOffset ExpiresAt { get; set; }
     public DateTimeOffset? StorageCleanedAt { get; set; }
+    public DateTimeOffset? CompletionLeaseExpiresAt { get; set; }
+    public Guid? CompletionOwnerId { get; set; }
+    public long PreviousSizeBytes { get; set; }
+    public Guid? PreviousProviderId { get; set; }
+    public long QuotaReservedBytes { get; set; }
+    public long ProviderReservedBytes { get; set; }
 }

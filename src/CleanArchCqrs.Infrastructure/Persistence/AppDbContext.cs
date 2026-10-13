@@ -30,6 +30,7 @@ public class AppDbContext : DbContext, IApplicationDbContext
     public DbSet<FilePreviewArtifact> FilePreviewArtifacts => Set<FilePreviewArtifact>();
     public DbSet<DocumentOutboxMessage> DocumentOutboxMessages => Set<DocumentOutboxMessage>();
     public DbSet<FileUploadSession> FileUploadSessions => Set<FileUploadSession>();
+    public DbSet<LegacyUploadIntent> LegacyUploadIntents => Set<LegacyUploadIntent>();
     public DbSet<Team> Teams => Set<Team>();
     public DbSet<TeamMember> TeamMembers => Set<TeamMember>();
     public DbSet<ResourceGrant> ResourceGrants => Set<ResourceGrant>();

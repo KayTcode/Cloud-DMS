@@ -8,7 +8,7 @@ using CleanArchCqrs.Application.Common.Interfaces;
 namespace CleanArchCqrs.Infrastructure.Services.Storage;
 
 // Provider configuration is encrypted by the existing storage-provider flow.
-public sealed class S3StorageService : IStorageService, IMultipartObjectStorage
+public sealed class S3StorageService : IStorageService, IMultipartObjectStorage, IIntentObjectStorage
 {
     private readonly AmazonS3Client _client;
     private readonly S3StorageSettings _settings;
@@ -52,6 +52,25 @@ public sealed class S3StorageService : IStorageService, IMultipartObjectStorage
             ContentType = contentType
         }, cancellationToken);
         return key;
+    }
+
+    public async Task<string> UploadForIntentAsync(Stream stream, Guid intentId, string contentType,
+        string? parentFolderId, CancellationToken cancellationToken)
+    {
+        var key = $"objects/legacy/{intentId:N}";
+        await _client.PutObjectAsync(new PutObjectRequest
+        {
+            BucketName = _settings.Bucket, Key = key,
+            InputStream = stream, ContentType = contentType
+        }, cancellationToken);
+        return key;
+    }
+
+    public async Task<IReadOnlyList<string>> FindIntentObjectsAsync(Guid intentId,
+        string? parentFolderId, CancellationToken cancellationToken)
+    {
+        var key = $"objects/legacy/{intentId:N}";
+        return await InspectAsync(key, cancellationToken) is null ? Array.Empty<string>() : new[] { key };
     }
 
     public async Task<string> BeginAsync(string key, string contentType, CancellationToken cancellationToken)

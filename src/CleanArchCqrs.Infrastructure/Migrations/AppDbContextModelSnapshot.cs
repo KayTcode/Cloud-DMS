@@ -785,6 +785,12 @@ namespace CleanArchCqrs.Infrastructure.Persistence.Migrations
                         .HasMaxLength(64)
                         .HasColumnType("varchar(64)");
 
+                    b.Property<DateTimeOffset?>("CompletionLeaseExpiresAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<Guid?>("CompletionOwnerId")
+                        .HasColumnType("char(36)");
+
                     b.Property<Guid?>("DepartmentId")
                         .HasColumnType("char(36)");
 
@@ -820,6 +826,12 @@ namespace CleanArchCqrs.Infrastructure.Persistence.Migrations
                         .HasMaxLength(500)
                         .HasColumnType("varchar(500)");
 
+                    b.Property<Guid?>("PreviousProviderId")
+                        .HasColumnType("char(36)");
+
+                    b.Property<long>("PreviousSizeBytes")
+                        .HasColumnType("bigint");
+
                     b.Property<long?>("PreviousDocumentVersion")
                         .HasColumnType("bigint");
 
@@ -828,6 +840,12 @@ namespace CleanArchCqrs.Infrastructure.Persistence.Migrations
 
                     b.Property<Guid>("QuotaUserId")
                         .HasColumnType("char(36)");
+
+                    b.Property<long>("QuotaReservedBytes")
+                        .HasColumnType("bigint");
+
+                    b.Property<long>("ProviderReservedBytes")
+                        .HasColumnType("bigint");
 
                     b.Property<string>("RequestHash")
                         .IsRequired()
@@ -868,6 +886,26 @@ namespace CleanArchCqrs.Infrastructure.Persistence.Migrations
                         .IsUnique();
 
                     b.ToTable("FileUploadSessions");
+                });
+
+            modelBuilder.Entity("CleanArchCqrs.Domain.Entities.LegacyUploadIntent", b =>
+                {
+                    b.Property<Guid>("Id").ValueGeneratedOnAdd().HasColumnType("char(36)");
+                    b.Property<DateTime>("CreatedAt").HasColumnType("datetime(6)");
+                    b.Property<DateTimeOffset>("ExpiresAt").HasColumnType("datetime(6)");
+                    b.Property<Guid>("FileId").HasColumnType("char(36)");
+                    b.Property<string>("ParentFolderId").HasMaxLength(500).HasColumnType("varchar(500)");
+                    b.Property<Guid>("ProviderId").HasColumnType("char(36)");
+                    b.Property<string>("Status").IsRequired().HasMaxLength(32).HasColumnType("varchar(32)");
+                    b.Property<DateTimeOffset?>("StorageCleanedAt").HasColumnType("datetime(6)");
+                    b.Property<Guid>("TenantId").HasColumnType("char(36)");
+                    b.Property<DateTime?>("UpdatedAt").HasColumnType("datetime(6)");
+                    b.Property<Guid>("UserId").HasColumnType("char(36)");
+                    b.HasKey("Id");
+                    b.HasIndex("ProviderId");
+                    b.HasIndex("Status", "ExpiresAt");
+                    b.HasIndex("TenantId", "FileId").IsUnique();
+                    b.ToTable("LegacyUploadIntents");
                 });
 
             modelBuilder.Entity("CleanArchCqrs.Domain.Entities.Folder", b =>
@@ -1237,6 +1275,9 @@ namespace CleanArchCqrs.Infrastructure.Persistence.Migrations
                         .HasDefaultValue("Connected");
 
                     b.Property<long>("TotalCapacityBytes")
+                        .HasColumnType("bigint");
+
+                    b.Property<long>("StagingUsedBytes")
                         .HasColumnType("bigint");
 
                     b.Property<int>("Type")
@@ -1778,6 +1819,16 @@ namespace CleanArchCqrs.Infrastructure.Persistence.Migrations
                     b.Navigation("ParentFolder");
 
                     b.Navigation("Tenant");
+                });
+
+            modelBuilder.Entity("CleanArchCqrs.Domain.Entities.LegacyUploadIntent", b =>
+                {
+                    b.HasOne("CleanArchCqrs.Domain.Entities.StorageProvider", null)
+                        .WithMany().HasForeignKey("ProviderId")
+                        .OnDelete(DeleteBehavior.Restrict).IsRequired();
+                    b.HasOne("CleanArchCqrs.Domain.Entities.Tenant", null)
+                        .WithMany().HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.Restrict).IsRequired();
                 });
 
             modelBuilder.Entity("CleanArchCqrs.Domain.Entities.QuotaReservation", b =>

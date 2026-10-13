@@ -17,6 +17,7 @@ public class StorageProvider : BaseEntity
     public string ConfigEncrypted { get; set; } = string.Empty;
     public long TotalCapacityBytes { get; set; }
     public long UsedCapacityBytes { get; set; }
+    public long StagingUsedBytes { get; set; }
     public string? RootFolderId { get; set; }
     public bool IsActive { get; set; } = true;
     public string Status { get; set; } = "Connected";

@@ -2,7 +2,7 @@ using CleanArchCqrs.Application.Common.Interfaces;
 
 namespace CleanArchCqrs.Infrastructure.Services.Storage;
 
-public class LocalStorageService : IStorageService
+public class LocalStorageService : IStorageService, IIntentObjectStorage
 {
     private readonly string _basePath;
 
@@ -54,6 +54,27 @@ public class LocalStorageService : IStorageService
         await stream.CopyToAsync(fileStream, cancellationToken);
 
         return Path.GetRelativePath(_basePath, filePath).Replace('\\', '/');
+    }
+
+    public async Task<string> UploadForIntentAsync(Stream stream, Guid intentId, string contentType,
+        string? parentFolderId, CancellationToken cancellationToken)
+    {
+        var directory = Path.Combine(_basePath, "legacy");
+        Directory.CreateDirectory(directory);
+        var key = $"legacy/{intentId:N}";
+        await using var output = new FileStream(Path.Combine(directory, intentId.ToString("N")),
+            FileMode.CreateNew, FileAccess.Write, FileShare.None, 81920, true);
+        await stream.CopyToAsync(output, cancellationToken);
+        return key;
+    }
+
+    public Task<IReadOnlyList<string>> FindIntentObjectsAsync(Guid intentId,
+        string? parentFolderId, CancellationToken cancellationToken)
+    {
+        var key = $"legacy/{intentId:N}";
+        IReadOnlyList<string> result = File.Exists(Path.Combine(_basePath, "legacy", intentId.ToString("N")))
+            ? new[] { key } : Array.Empty<string>();
+        return Task.FromResult(result);
     }
 
     public Task<Stream> DownloadFileAsync(string storageKey, CancellationToken cancellationToken = default)

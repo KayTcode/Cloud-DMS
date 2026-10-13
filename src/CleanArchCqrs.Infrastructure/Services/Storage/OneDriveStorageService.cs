@@ -8,7 +8,7 @@ using System.Text.Json;
 
 namespace CleanArchCqrs.Infrastructure.Services.Storage;
 
-public class OneDriveStorageService : IStorageService
+public class OneDriveStorageService : IStorageService, IIntentObjectStorage
 {
     private readonly GraphServiceClient _graphClient;
     private readonly string? _userEmail;
@@ -161,12 +161,16 @@ public class OneDriveStorageService : IStorageService
         return _cachedDriveId;
     }
 
-    public async Task<string> UploadFileAsync(
+    public Task<string> UploadFileAsync(
         Stream stream, 
         string fileName, 
         string contentType, 
         string? parentFolderId = null, 
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default) =>
+        UploadFileCoreAsync(stream, fileName, contentType, parentFolderId, true, cancellationToken);
+
+    private async Task<string> UploadFileCoreAsync(Stream stream, string fileName, string contentType,
+        string? parentFolderId, bool renameOnConflict, CancellationToken cancellationToken)
     {
         var driveId = await GetDriveIdAsync(cancellationToken);
         string folderId = string.IsNullOrEmpty(parentFolderId) || parentFolderId == "root" ? "root" : parentFolderId;
@@ -206,7 +210,7 @@ public class OneDriveStorageService : IStorageService
             {
                 AdditionalData = new Dictionary<string, object>
                 {
-                    { "@microsoft.graph.conflictBehavior", "rename" }
+                    { "@microsoft.graph.conflictBehavior", renameOnConflict ? "rename" : "fail" }
                 }
             }
         };
@@ -243,6 +247,36 @@ public class OneDriveStorageService : IStorageService
         }
 
         return uploadResult.ItemResponse?.Id ?? Guid.NewGuid().ToString();
+    }
+
+    public async Task<string> UploadForIntentAsync(Stream stream, Guid intentId, string contentType,
+        string? parentFolderId, CancellationToken cancellationToken)
+    {
+        await UploadFileCoreAsync(stream, $"dms-legacy-{intentId:N}", contentType,
+            parentFolderId, false, cancellationToken);
+        var found = await FindIntentObjectsAsync(intentId, parentFolderId, cancellationToken);
+        return found.Count == 1 ? found[0]
+            : throw new InvalidOperationException("OneDrive upload could not be verified by intent marker.");
+    }
+
+    public async Task<IReadOnlyList<string>> FindIntentObjectsAsync(Guid intentId,
+        string? parentFolderId, CancellationToken cancellationToken)
+    {
+        var driveId = await GetDriveIdAsync(cancellationToken);
+        var name = $"dms-legacy-{intentId:N}";
+        try
+        {
+            var item = string.IsNullOrEmpty(parentFolderId) || parentFolderId == "root"
+                ? await _graphClient.Drives[driveId].Root.ItemWithPath(name)
+                    .GetAsync(cancellationToken: cancellationToken)
+                : await _graphClient.Drives[driveId].Items[parentFolderId].ItemWithPath(name)
+                    .GetAsync(cancellationToken: cancellationToken);
+            return string.IsNullOrEmpty(item?.Id) ? Array.Empty<string>() : new[] { item.Id };
+        }
+        catch (Microsoft.Kiota.Abstractions.ApiException ex) when (ex.ResponseStatusCode == 404)
+        {
+            return Array.Empty<string>();
+        }
     }
 
     public async Task<Stream> DownloadFileAsync(string storageKey, CancellationToken cancellationToken = default)

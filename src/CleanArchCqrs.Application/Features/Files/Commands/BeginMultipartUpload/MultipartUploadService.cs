@@ -62,7 +62,9 @@ public sealed class MultipartUploadService(
     {
         ValidateKey(command.IdempotencyKey);
         var maxBytes = long.TryParse(configuration["Upload:MaxStorageBytes"], out var configuredMaximum)
-            ? configuredMaximum : 5L * 1024 * 1024 * 1024;
+            ? configuredMaximum : 50L * 1024 * 1024 * 1024;
+        var stagingLimit = long.TryParse(configuration["Upload:MaxStagingBytesPerProvider"], out var configuredStaging)
+            ? configuredStaging : 200L * 1024 * 1024 * 1024;
         if (maxBytes <= 0 || command.SizeBytes <= 0 || command.SizeBytes > maxBytes
             || string.IsNullOrWhiteSpace(command.FileName) || command.FileName.Length > 255)
             throw new ArgumentException("Invalid upload size or name.");
@@ -86,6 +88,8 @@ public sealed class MultipartUploadService(
         var version = 1L;
         var quotaUserId = user.Id;
         var quotaDepartmentId = user.DepartmentId;
+        long previousSize = 0;
+        Guid? previousProviderId = null;
         if (command.ReplaceFileId.HasValue)
         {
             var old = await db.FileEntries.IgnoreQueryFilters().AsNoTracking().SingleOrDefaultAsync(f =>
@@ -94,7 +98,15 @@ public sealed class MultipartUploadService(
             version = checked(old.DocumentVersion + 1);
             quotaUserId = old.OwnerId;
             quotaDepartmentId = old.OwningDepartmentId ?? old.DepartmentId;
+            previousSize = old.SizeBytes;
+            previousProviderId = old.StorageProviderId;
         }
+        var logicalReservation = Math.Max(0, command.SizeBytes - previousSize);
+        var providerReservation = previousProviderId == provider.Id
+            ? logicalReservation : command.SizeBytes;
+        if (!await db.UserStorageQuotas.IgnoreQueryFilters().AsNoTracking()
+            .AnyAsync(q => q.UserId == quotaUserId, ct))
+            throw new UploadQuotaExceededException("User storage quota is not configured.");
         var key = $"objects/{context.TenantId:N}/{fileId:N}/{version}/{Guid.NewGuid():N}";
         using var storage = storageFactory.CreateService(provider) as IMultipartObjectStorage
             ?? throw new NotSupportedException("Provider does not support multipart upload.");
@@ -107,6 +119,8 @@ public sealed class MultipartUploadService(
             ProviderId = provider.Id, ObjectKey = key, MultipartUploadId = uploadId,
             FileName = command.FileName, FolderId = command.FolderId,
             ReservedBytes = command.SizeBytes, IdempotencyKey = command.IdempotencyKey,
+            PreviousSizeBytes = previousSize, PreviousProviderId = previousProviderId,
+            QuotaReservedBytes = logicalReservation, ProviderReservedBytes = providerReservation,
             RequestHash = requestHash,
             ExpiresAt = DateTimeOffset.UtcNow.Add(SessionLifetime)
         };
@@ -115,7 +129,20 @@ public sealed class MultipartUploadService(
         {
             await using var tx = await db.Database.BeginTransactionAsync(IsolationLevel.ReadCommitted, ct);
             await quota.ReserveAsync(context.TenantId, quotaDepartmentId, quotaUserId,
-                provider.Id, command.SizeBytes, ct);
+                provider.Id, logicalReservation, ct, providerReservation);
+            await quota.ReserveStagingAsync(provider.Id, command.SizeBytes, stagingLimit, ct);
+            if (command.ReplaceFileId.HasValue)
+            {
+                var locked = await db.FileEntries.FromSqlInterpolated(
+                    $"SELECT * FROM `FileEntries` WHERE `Id` = {fileId} AND `TenantId` = {context.TenantId} FOR UPDATE")
+                    .IgnoreQueryFilters().AsNoTracking().ToArrayAsync(ct);
+                if (locked.Length != 1 || locked[0].DocumentVersion != version - 1
+                    || locked[0].SizeBytes != previousSize
+                    || locked[0].StorageProviderId != previousProviderId
+                    || locked[0].OwnerId != quotaUserId || locked[0].IsDeleted
+                    || locked[0].Lifecycle != FileLifecycle.Active)
+                    throw new AuthorizationChangedException();
+            }
             db.FileUploadSessions.Add(session);
             await db.SaveChangesAsync(ct);
             commitAttempted = true;
@@ -140,6 +167,10 @@ public sealed class MultipartUploadService(
         var session = await RequireSessionAsync(command.SessionId, ct);
         if (session.Status != FileUploadStatus.Pending || session.ExpiresAt <= DateTimeOffset.UtcNow)
             throw new InvalidOperationException("Upload session is not open.");
+        var currentAuthority = await authorization.RequireAsync(session.FolderId,
+            session.PreviousDocumentVersion.HasValue ? session.FileId : null, ct);
+        if (currentAuthority.Provider.Id != session.ProviderId)
+            throw new AuthorizationChangedException();
         using var storage = await StorageAsync(session, ct);
         var expiresAt = DateTimeOffset.UtcNow.Add(PartUrlLifetime);
         if (expiresAt > session.ExpiresAt) expiresAt = session.ExpiresAt;
@@ -167,15 +198,26 @@ public sealed class MultipartUploadService(
                 new MutationReceipt(old.Id, old.Version, old.Status));
         }
         if (session.Status is FileUploadStatus.Failed or FileUploadStatus.Expired
-            || session.ExpiresAt <= DateTimeOffset.UtcNow)
+            || session.Status == FileUploadStatus.Pending && session.ExpiresAt <= DateTimeOffset.UtcNow)
             throw new InvalidOperationException("Upload session has expired or was aborted.");
-        var (context, user, _, stamps) = await authorization.RequireAsync(session.FolderId,
+        var (context, user, currentProvider, stamps) = await authorization.RequireAsync(session.FolderId,
             session.PreviousDocumentVersion.HasValue ? session.FileId : null, ct);
+        if (currentProvider.Id != session.ProviderId)
+            throw new AuthorizationChangedException();
+        var claimTime = DateTimeOffset.UtcNow;
+        var completionOwner = Guid.NewGuid();
         var bound = await db.FileUploadSessions.IgnoreQueryFilters()
-            .Where(s => s.Id == session.Id && s.Status == FileUploadStatus.Pending
-                && s.ExpiresAt > DateTimeOffset.UtcNow
-                && (s.CompletionManifestHash == null || s.CompletionManifestHash == manifestHash))
-            .ExecuteUpdateAsync(s => s.SetProperty(x => x.CompletionManifestHash, manifestHash), ct);
+            .Where(s => s.Id == session.Id
+                && (s.Status == FileUploadStatus.Pending && s.ExpiresAt > claimTime
+                    && s.CompletionManifestHash == null
+                    || s.Status == FileUploadStatus.Completing
+                    && s.CompletionManifestHash == manifestHash
+                    && s.CompletionLeaseExpiresAt > claimTime))
+            .ExecuteUpdateAsync(s => s
+                .SetProperty(x => x.Status, FileUploadStatus.Completing)
+                .SetProperty(x => x.CompletionManifestHash, manifestHash)
+                .SetProperty(x => x.CompletionOwnerId, completionOwner)
+                .SetProperty(x => x.CompletionLeaseExpiresAt, claimTime.AddMinutes(30)), ct);
         if (bound != 1)
             throw new InvalidOperationException("Completion manifest conflicts with this upload session.");
         using var storage = await StorageAsync(session, ct);
@@ -204,8 +246,9 @@ public sealed class MultipartUploadService(
             await authorization.AssertCurrentAsync(context, user, stamps, token);
             var claimed = await db.FileUploadSessions.IgnoreQueryFilters()
                 .Where(s => s.Id == session.Id && s.TenantId == session.TenantId
-                    && s.Status == FileUploadStatus.Pending && s.CompletionManifestHash == manifestHash
-                    && s.ExpiresAt > DateTimeOffset.UtcNow
+                    && s.Status == FileUploadStatus.Completing && s.CompletionManifestHash == manifestHash
+                    && s.CompletionOwnerId == completionOwner
+                    && s.CompletionLeaseExpiresAt > DateTimeOffset.UtcNow
                     && s.ReservedBytes >= head.SizeBytes)
                 .ExecuteUpdateAsync(s => s.SetProperty(x => x.Status, FileUploadStatus.Completed), token);
             if (claimed != 1)
@@ -218,11 +261,10 @@ public sealed class MultipartUploadService(
                 file = await db.FileEntries.IgnoreQueryFilters().SingleAsync(f =>
                     f.TenantId == current.TenantId && f.Id == current.FileId, token);
                 if (file.DocumentVersion != current.PreviousDocumentVersion || file.IsDeleted
-                    || file.Lifecycle != FileLifecycle.Active || file.OwnerId != current.QuotaUserId)
+                    || file.Lifecycle != FileLifecycle.Active || file.OwnerId != current.QuotaUserId
+                    || file.SizeBytes != current.PreviousSizeBytes
+                    || file.StorageProviderId != current.PreviousProviderId)
                     throw new AuthorizationChangedException();
-                await quota.ReleaseAsync(current.TenantId,
-                    file.OwningDepartmentId ?? file.DepartmentId, file.OwnerId,
-                    file.StorageProviderId ?? current.ProviderId, file.SizeBytes, token);
                 file.DocumentVersion = current.DocumentVersion;
                 file.AuthorizationVersion = checked(file.AuthorizationVersion + 1);
                 file.ActiveSearchGenerationId = null;
@@ -241,19 +283,26 @@ public sealed class MultipartUploadService(
             }
             file.StorageKey = current.ObjectKey;
             file.SizeBytes = head.SizeBytes;
-            file.ContentType = head.ContentType;
+            file.ContentType = "application/octet-stream";
             file.Hash = null;
             file.ScanStatus = "Pending";
             db.FileContentVersions.Add(new FileContentVersion
             {
                 TenantId = current.TenantId, FileId = current.FileId,
                 DocumentVersion = current.DocumentVersion, ObjectKey = current.ObjectKey,
-                ProviderId = current.ProviderId, ContentType = head.ContentType,
+                ProviderId = current.ProviderId, ContentType = "application/octet-stream",
                 SizeBytes = head.SizeBytes, Hash = string.Empty, ScanStatus = FileScanStatus.Pending
             });
-            if (head.SizeBytes < current.ReservedBytes)
+            var logicalRefund = checked(current.QuotaReservedBytes + current.PreviousSizeBytes - head.SizeBytes);
+            var providerRefund = current.PreviousProviderId == current.ProviderId
+                ? checked(current.ProviderReservedBytes + current.PreviousSizeBytes - head.SizeBytes)
+                : current.ProviderReservedBytes - head.SizeBytes;
+            await quota.ReleaseAsync(current.TenantId, current.DepartmentId, current.QuotaUserId,
+                current.ProviderId, logicalRefund, token, providerRefund);
+            if (current.PreviousProviderId.HasValue && current.PreviousProviderId != current.ProviderId)
                 await quota.ReleaseAsync(current.TenantId, current.DepartmentId, current.QuotaUserId,
-                    current.ProviderId, current.ReservedBytes - head.SizeBytes, token);
+                    current.PreviousProviderId.Value, 0, token, current.PreviousSizeBytes);
+            await quota.ReleaseStagingAsync(current.ProviderId, current.ReservedBytes, token);
             db.DocumentOutboxMessages.Add(new DocumentOutboxMessage
             {
                 TenantId = current.TenantId, FileId = current.FileId,
@@ -270,14 +319,18 @@ public sealed class MultipartUploadService(
         var session = await RequireSessionAsync(command.SessionId, ct);
         if (session.Status == FileUploadStatus.Completed) return false;
         if (session.Status is FileUploadStatus.Failed or FileUploadStatus.Expired) return true;
+        if (session.Status == FileUploadStatus.Completing) return false;
         await using (var tx = await db.Database.BeginTransactionAsync(IsolationLevel.ReadCommitted, ct))
         {
             var updated = await db.FileUploadSessions.IgnoreQueryFilters()
                 .Where(s => s.Id == session.Id && s.Status == FileUploadStatus.Pending)
                 .ExecuteUpdateAsync(s => s.SetProperty(x => x.Status, FileUploadStatus.Failed), ct);
             if (updated == 1)
+            {
                 await quota.ReleaseAsync(session.TenantId, session.DepartmentId, session.QuotaUserId,
-                    session.ProviderId, session.ReservedBytes, ct);
+                    session.ProviderId, session.QuotaReservedBytes, ct, session.ProviderReservedBytes);
+                await quota.ReleaseStagingAsync(session.ProviderId, session.ReservedBytes, ct);
+            }
             await tx.CommitAsync(ct);
             if (updated != 1) return false;
         }
