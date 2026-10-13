@@ -11,13 +11,22 @@ public sealed class SecurityProjectionBootstrapper(AppDbContext db, ISecurityRed
     private const string LockKey = "security:bootstrap-lock";
     public async Task RebuildAsync(CancellationToken cancellationToken)
     {
+        // A validated rollback can change a barrier while the DB snapshot is built.
+        // Retry once with a new lease and transaction; repeated changes fail closed.
+        for (var attempt = 0; attempt < 2; attempt++)
+            if (await RebuildOnceAsync(cancellationToken)) return;
+        throw new SecurityUnavailableException();
+    }
+
+    private async Task<bool> RebuildOnceAsync(CancellationToken cancellationToken)
+    {
         var owner = Guid.NewGuid().ToString("N");
         var runId = await readiness.GetCurrentServerRunIdAsync(cancellationToken);
         if (await redis.ExecuteAsync("begin-bootstrap", new[] { "security:meta", LockKey }, new[] { owner }, cancellationToken) != "started")
             throw new SecurityUnavailableException();
         try
         {
-            await db.Database.CreateExecutionStrategy().ExecuteAsync(async () =>
+            var published = await db.Database.CreateExecutionStrategy().ExecuteAsync(async () =>
             {
                 await using var transaction = await db.Database.BeginTransactionAsync(IsolationLevel.RepeatableRead, cancellationToken);
                 var projections = (await new AuthorizationProjectionBuilder(db).BuildScopeProjectionsAsync("global", cancellationToken)).ToList();
@@ -42,10 +51,14 @@ public sealed class SecurityProjectionBootstrapper(AppDbContext db, ISecurityRed
                 if (await readiness.GetCurrentServerRunIdAsync(cancellationToken) != runId) throw new SecurityUnavailableException();
                 var result = await redis.ExecuteAsync("finish-bootstrap", new[] { "security:meta", LockKey },
                     new[] { owner, Guid.NewGuid().ToString("N"), runId, "1", JsonSerializer.Serialize(projections, JsonOptions), JsonSerializer.Serialize(indexes, JsonOptions) }, cancellationToken);
+                if (result == "snapshot-changed") return false;
                 if (result != "ready") throw new SecurityUnavailableException();
                 await transaction.CommitAsync(cancellationToken);
+                return true;
             });
+            if (!published) return false;
             await readiness.AssertReadyAsync(cancellationToken);
+            return true;
         }
         finally
         {

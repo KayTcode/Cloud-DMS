@@ -13,7 +13,6 @@ namespace CleanArchCqrs.Application.Users.Commands.Login
     {
         private readonly IUserRepository _userRepository;
         private readonly IPasswordHasher _passswordHasher;
-        private readonly IJwtTokenService _jwtTokenService;
         private readonly IAuthSessionService _sessions;
         private readonly IUserAuthorizationRepository _userAuthorizationRepository;
         private readonly IApplicationDbContext _context;
@@ -21,13 +20,11 @@ namespace CleanArchCqrs.Application.Users.Commands.Login
         public LoginCommandHandler(
             IUserRepository userRepository,
             IPasswordHasher passswordHasher,
-            IJwtTokenService jwtTokenService,
             IUserAuthorizationRepository userAuthorizationRepository,
             IApplicationDbContext context, IAuthSessionService sessions)
         {
             _userRepository = userRepository;
             _passswordHasher = passswordHasher;
-            _jwtTokenService = jwtTokenService;
             _sessions = sessions;
             _userAuthorizationRepository = userAuthorizationRepository;
             _context = context;

@@ -28,7 +28,6 @@ public sealed class GoogleAuthService : IGoogleAuthService
     private readonly GoogleAuthOptions _options;
     private readonly IUserRepository _userRepository;
     private readonly IUserAuthorizationRepository _userAuthorizationRepository;
-    private readonly IJwtTokenService _jwtTokenService;
     private readonly IAuthSessionService _sessions;
     private readonly IApplicationDbContext _context;
 
@@ -38,7 +37,6 @@ public sealed class GoogleAuthService : IGoogleAuthService
         IOptions<GoogleAuthOptions> options,
         IUserRepository userRepository,
         IUserAuthorizationRepository userAuthorizationRepository,
-        IJwtTokenService jwtTokenService,
         IApplicationDbContext context, IAuthSessionService sessions)
     {
         _httpClient = httpClient;
@@ -46,7 +44,6 @@ public sealed class GoogleAuthService : IGoogleAuthService
         _options = options.Value;
         _userRepository = userRepository;
         _userAuthorizationRepository = userAuthorizationRepository;
-        _jwtTokenService = jwtTokenService;
         _sessions = sessions;
         _context = context;
     }

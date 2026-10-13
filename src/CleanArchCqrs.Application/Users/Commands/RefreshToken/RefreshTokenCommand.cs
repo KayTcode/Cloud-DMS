@@ -17,17 +17,15 @@ public class RefreshTokenCommandHandler : IRequestHandler<RefreshTokenCommand, R
 {
     private readonly IApplicationDbContext _context;
     private readonly IUserAuthorizationRepository _userAuthorizationRepository;
-    private readonly IJwtTokenService _jwtTokenService;
     private readonly IAuthSessionService _sessions;
 
     public RefreshTokenCommandHandler(
         IApplicationDbContext context,
         IUserAuthorizationRepository userAuthorizationRepository,
-        IJwtTokenService jwtTokenService, IAuthSessionService sessions)
+        IAuthSessionService sessions)
     {
         _context = context;
         _userAuthorizationRepository = userAuthorizationRepository;
-        _jwtTokenService = jwtTokenService;
         _sessions = sessions;
     }
 

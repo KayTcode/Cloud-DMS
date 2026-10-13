@@ -11,11 +11,13 @@ public class LogoutCommandHandler : IRequestHandler<LogoutCommand, Result<bool>>
 {
     private readonly IApplicationDbContext _context;
     private readonly ICurrentUserService _currentUserService;
+    private readonly IAuthSessionService _sessions;
 
-    public LogoutCommandHandler(IApplicationDbContext context, ICurrentUserService currentUserService)
+    public LogoutCommandHandler(IApplicationDbContext context, ICurrentUserService currentUserService, IAuthSessionService sessions)
     {
         _context = context;
         _currentUserService = currentUserService;
+        _sessions = sessions;
     }
 
     public async Task<Result<bool>> Handle(LogoutCommand request, CancellationToken cancellationToken)
@@ -32,6 +34,7 @@ public class LogoutCommandHandler : IRequestHandler<LogoutCommand, Result<bool>>
 
         foreach (var token in activeTokens)
         {
+            await _sessions.BlockAsync(token.Id, cancellationToken);
             token.Revoke();
         }
 

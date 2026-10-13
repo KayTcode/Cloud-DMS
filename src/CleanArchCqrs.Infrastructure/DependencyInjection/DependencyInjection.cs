@@ -58,7 +58,6 @@ namespace CleanArchCqrs.Infrastructure.DependencyInjection
                     provider.GetRequiredService<IOptions<GoogleAuthOptions>>(),
                     provider.GetRequiredService<IUserRepository>(),
                     provider.GetRequiredService<IUserAuthorizationRepository>(),
-                    provider.GetRequiredService<IJwtTokenService>(),
                     provider.GetRequiredService<IApplicationDbContext>(),
                     provider.GetRequiredService<IAuthSessionService>()));
             services.AddScoped<IEmailService, EmailService>();

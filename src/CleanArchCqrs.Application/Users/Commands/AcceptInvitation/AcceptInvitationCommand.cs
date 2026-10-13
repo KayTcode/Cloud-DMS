@@ -36,19 +36,16 @@ public class AcceptInvitationCommandHandler : IRequestHandler<AcceptInvitationCo
 {
     private readonly IApplicationDbContext _context;
     private readonly IPasswordHasher _passwordHasher;
-    private readonly IJwtTokenService _jwtTokenService;
     private readonly IAuthSessionService _sessions;
     private readonly IUserAuthorizationRepository _userAuthorizationRepository;
 
     public AcceptInvitationCommandHandler(
         IApplicationDbContext context,
         IPasswordHasher passwordHasher,
-        IJwtTokenService jwtTokenService,
         IUserAuthorizationRepository userAuthorizationRepository, IAuthSessionService sessions)
     {
         _context = context;
         _passwordHasher = passwordHasher;
-        _jwtTokenService = jwtTokenService;
         _sessions = sessions;
         _userAuthorizationRepository = userAuthorizationRepository;
     }

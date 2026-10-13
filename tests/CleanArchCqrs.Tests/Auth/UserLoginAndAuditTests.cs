@@ -17,15 +17,12 @@ public class UserLoginAndAuditTests
 {
     private readonly Mock<IUserRepository> _userRepositoryMock = new();
     private readonly Mock<IPasswordHasher> _passwordHasherMock = new();
-    private readonly Mock<IJwtTokenService> _jwtTokenServiceMock = new();
     private readonly Mock<IUserAuthorizationRepository> _userAuthRepoMock = new();
     private readonly Mock<ILogger<LoggingBehavior<LoginCommand, string>>> _loggingBehaviorLoggerMock = new();
 
     public UserLoginAndAuditTests()
     {
         _passwordHasherMock.Setup(x => x.Verify(It.IsAny<string>(), It.IsAny<string>())).Returns(true);
-        _jwtTokenServiceMock.Setup(x => x.GenerateAccessToken(It.IsAny<User>(), It.IsAny<string>(), It.IsAny<IEnumerable<string>>(), It.IsAny<Guid?>()))
-            .Returns(new JwtTokenResult("token", DateTime.UtcNow.AddMinutes(15)));
         _userAuthRepoMock.Setup(x => x.GetRoleAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>())).ReturnsAsync("Employee");
         _userAuthRepoMock.Setup(x => x.GetPermissionsAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new List<string>());
@@ -63,7 +60,6 @@ public class UserLoginAndAuditTests
         var handler = new LoginCommandHandler(
             _userRepositoryMock.Object,
             _passwordHasherMock.Object,
-            _jwtTokenServiceMock.Object,
             _userAuthRepoMock.Object,
             context, CreateSessions());
 

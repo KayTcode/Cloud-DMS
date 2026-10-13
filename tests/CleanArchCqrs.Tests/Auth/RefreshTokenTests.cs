@@ -31,7 +31,7 @@ public class RefreshTokenTests
         var sessions = new Mock<IAuthSessionService>();
         sessions.Setup(x => x.IssueAsync(It.IsAny<User>(), It.IsAny<string>(), It.IsAny<IEnumerable<string>>(), It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new JwtTokenResult("token", DateTime.UtcNow.AddMinutes(15)));
-        var handler = new RefreshTokenCommandHandler(db, auth.Object, Mock.Of<IJwtTokenService>(), sessions.Object);
+        var handler = new RefreshTokenCommandHandler(db, auth.Object, sessions.Object);
         var result = await handler.Handle(new(raw), CancellationToken.None);
         Assert.Equal(expectedSuccess, result.IsSuccess);
         if (expectedSuccess)

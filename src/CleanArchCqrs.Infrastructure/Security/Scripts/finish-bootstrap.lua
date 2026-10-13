@@ -1,4 +1,8 @@
 if redis.call('GET', KEYS[2]) ~= ARGV[1] then return 'not-owner' end
+if redis.call('EXISTS', 'security:bootstrap-invalidated:' .. ARGV[1]) == 1 then
+    redis.call('DEL', KEYS[2], 'security:bootstrap-invalidated:' .. ARGV[1])
+    return 'snapshot-changed'
+end
 local projections = cjson.decode(ARGV[5])
 local indexes = cjson.decode(ARGV[6])
 local desiredScopes = {}

@@ -5,6 +5,7 @@ using CleanArchCqrs.Application.Common.Interfaces;
 using CleanArchCqrs.Application.Common.Interfaces.Repositories;
 using CleanArchCqrs.Application.Users.Commands.RefreshToken;
 using CleanArchCqrs.Application.Users.Commands.Login;
+using CleanArchCqrs.Application.Users.Commands.Logout;
 using CleanArchCqrs.Domain.Enums;
 using CleanArchCqrs.Infrastructure.Repositories;
 using CleanArchCqrs.Domain.Entities;
@@ -29,6 +30,110 @@ public sealed class AuthSessionIntegrationTests(MySqlFixture mysql, RedisFixture
 {
     private static JwtTokenService Jwt() => new(Options.Create(new JwtOptions
     { SecretKey = new string('x', 64), Issuer = "test", Audience = "test", ExpirationMinutes = 15 }));
+
+    [Fact]
+    public async Task ValidatedCancellationPreventsPublishingPreviouslyBuiltPendingSnapshot()
+    {
+        await using var db = mysql.CreateDbContext();
+        using var client = redis.CreateClient();
+        var readiness = new RedisReadiness(client);
+        await new SecurityProjectionBootstrapper(db, client, readiness).RebuildAsync(CancellationToken.None);
+        var generation = await readiness.AssertReadyAsync(CancellationToken.None);
+        var run = await readiness.GetCurrentServerRunIdAsync(CancellationToken.None);
+        var scopeKey = $"dms:scope:tenant:{Guid.NewGuid():N}";
+        const string previous = "{\"version\":0,\"updating\":false,\"complete\":true}";
+        await redis.SetStringAsync(scopeKey, previous);
+        var operation = Guid.NewGuid().ToString("N");
+        var backup = $"security:change-backup:{operation}";
+        Assert.Equal("started", await client.ExecuteAsync("begin-change", new[] { "security:meta", scopeKey, backup }, new[] { generation, run, operation, "1" }, CancellationToken.None));
+        var owner = Guid.NewGuid().ToString("N");
+        Assert.Equal("started", await client.ExecuteAsync("begin-bootstrap", new[] { "security:meta", "security:bootstrap-lock" }, new[] { owner }, CancellationToken.None));
+        var staleProjection = System.Text.Json.JsonSerializer.Serialize(new[] { new { key = scopeKey, json = await redis.GetStringAsync(scopeKey) } });
+        try
+        {
+            Assert.Equal("not-owner", await client.ExecuteAsync("cancel-change", new[] { scopeKey, backup }, new[] { Guid.NewGuid().ToString("N"), "1" }, CancellationToken.None));
+            Assert.Equal("not-owner", await client.ExecuteAsync("cancel-change", new[] { scopeKey, backup }, new[] { operation, "2" }, CancellationToken.None));
+            Assert.Equal("cancelled", await client.ExecuteAsync("cancel-change", new[] { scopeKey, backup }, new[] { operation, "1" }, CancellationToken.None));
+            Assert.Equal("snapshot-changed", await client.ExecuteAsync("finish-bootstrap", new[] { "security:meta", "security:bootstrap-lock" },
+                new[] { owner, Guid.NewGuid().ToString("N"), run, "1", staleProjection, "[]" }, CancellationToken.None));
+            Assert.Equal(previous, await redis.GetStringAsync(scopeKey));
+            await Assert.ThrowsAsync<SecurityUnavailableException>(() => readiness.AssertReadyAsync(CancellationToken.None));
+            await new SecurityProjectionBootstrapper(db, client, readiness).RebuildAsync(CancellationToken.None);
+            await readiness.AssertReadyAsync(CancellationToken.None);
+        }
+        finally
+        {
+            await client.ExecuteAsync("abort-bootstrap", new[] { "security:bootstrap-lock" }, new[] { owner }, CancellationToken.None);
+            await client.ExecuteAsync("cancel-change", new[] { scopeKey, backup }, new[] { operation, "1" }, CancellationToken.None);
+        }
+    }
+
+    [Fact]
+    public async Task RollbackDuringBootstrapRestoresBarrierAndRebuildRecovers()
+    {
+        await using var setup = mysql.CreateDbContext();
+        var tenant = new Tenant(Guid.NewGuid(), "Rollback test", Guid.NewGuid().ToString("N"), 1000);
+        setup.Tenants.Add(tenant); await setup.SaveChangesAsync();
+        using var client = redis.CreateClient();
+        var readiness = new RedisReadiness(client);
+        await new SecurityProjectionBootstrapper(setup, client, readiness).RebuildAsync(CancellationToken.None);
+        var scope = $"tenant:{tenant.Id:N}";
+        var scopeKey = $"dms:scope:{scope}";
+        var previous = await redis.GetStringAsync(scopeKey);
+        var callbackStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var rollback = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        await using var mutationDb = mysql.CreateDbContext();
+        var coordinator = new AuthorizationMutationCoordinator(mutationDb, client, readiness, NullLogger<AuthorizationMutationCoordinator>.Instance);
+        var mutation = coordinator.ExecuteAsync(new(scope, Guid.NewGuid().ToString("N"), new string('b', 64)), MySqlFixture.LegacyUserId, async _ =>
+        {
+            callbackStarted.TrySetResult();
+            await rollback.Task.WaitAsync(TimeSpan.FromSeconds(10));
+            throw new InvalidOperationException("Test rollback.");
+        }, CancellationToken.None);
+        await callbackStarted.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        var barrier = await redis.GetStringAsync(scopeKey);
+        using var marker = System.Text.Json.JsonDocument.Parse(barrier!);
+        var operation = marker.RootElement.GetProperty("operationId").GetString()!;
+        var version = marker.RootElement.GetProperty("version").GetInt64().ToString();
+        var gate = new BootstrapGateRedis(client);
+        await using var rebuildDb = mysql.CreateDbContext();
+        var rebuild = new SecurityProjectionBootstrapper(rebuildDb, gate, readiness).RebuildAsync(CancellationToken.None);
+        await gate.Started.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        try
+        {
+            rollback.TrySetResult();
+            await Assert.ThrowsAsync<InvalidOperationException>(() => mutation);
+            Assert.Equal(previous, await redis.GetStringAsync(scopeKey));
+            gate.Continue.TrySetResult();
+            await rebuild;
+            await readiness.AssertReadyAsync(CancellationToken.None);
+            Assert.False(await setup.AuthorizationOperations.AnyAsync(x => x.Id == Guid.Parse(operation)));
+        }
+        finally
+        {
+            gate.Continue.TrySetResult();
+            try { await rebuild; } catch (SecurityUnavailableException) { }
+            // Isolate a RED failure from other tests in this fixture; cancel after the lease releases.
+            await client.ExecuteAsync("cancel-change", new[] { scopeKey, $"security:change-backup:{operation}" }, new[] { operation, version }, CancellationToken.None);
+        }
+    }
+
+    private sealed class BootstrapGateRedis(ISecurityRedis inner) : ISecurityRedis
+    {
+        public TaskCompletionSource Started { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public TaskCompletionSource Continue { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private int gated;
+        public async Task<string> ExecuteAsync(string scriptName, IReadOnlyList<string> keys, IReadOnlyList<string> args, CancellationToken cancellationToken)
+        {
+            var result = await inner.ExecuteAsync(scriptName, keys, args, cancellationToken);
+            if (scriptName == "begin-bootstrap" && result == "started" && Interlocked.Increment(ref gated) == 1)
+            {
+                Started.TrySetResult();
+                await Continue.Task.WaitAsync(TimeSpan.FromSeconds(10), cancellationToken);
+            }
+            return result;
+        }
+    }
 
     [Fact]
     public async Task LostBootstrapOwnerCannotPublishReadiness()
@@ -84,8 +189,8 @@ public sealed class AuthSessionIntegrationTests(MySqlFixture mysql, RedisFixture
         var firstSessions = new PairedSessions(new AuthSessionService(firstDb, client, readiness, Jwt()), gate);
         var secondSessions = new PairedSessions(new AuthSessionService(secondDb, client, readiness, Jwt()), gate);
         var auth = new EmptyAuthorizationRepository();
-        var first = new RefreshTokenCommandHandler(firstDb, auth, Jwt(), firstSessions);
-        var second = new RefreshTokenCommandHandler(secondDb, auth, Jwt(), secondSessions);
+        var first = new RefreshTokenCommandHandler(firstDb, auth, firstSessions);
+        var second = new RefreshTokenCommandHandler(secondDb, auth, secondSessions);
         var results = await Task.WhenAll(first.Handle(new(raw), CancellationToken.None), second.Handle(new(raw), CancellationToken.None));
         Assert.Single(results, x => x.IsSuccess);
         await using var verify = mysql.CreateDbContext();
@@ -180,7 +285,7 @@ public sealed class AuthSessionIntegrationTests(MySqlFixture mysql, RedisFixture
         using var client = redis.CreateClient();
         var readiness = new RedisReadiness(client);
         var service = new AuthSessionService(db, client, readiness, Jwt());
-        var token = await new LoginCommandHandler(new UserRepository(db), new PasswordHasher(), Jwt(), new UserAuthorizationRepository(db), db, service)
+        var token = await new LoginCommandHandler(new UserRepository(db), new PasswordHasher(), new UserAuthorizationRepository(db), db, service)
             .Handle(new LoginCommand(user.Email, "integration-password"), CancellationToken.None);
         var sessionId = Guid.Parse(new JwtSecurityTokenHandler().ReadJwtToken(token.AccessToken).Claims.Single(x => x.Type == "sid").Value);
         var session = await db.RefreshTokens.SingleAsync(x => x.Id == sessionId);
@@ -193,10 +298,16 @@ public sealed class AuthSessionIntegrationTests(MySqlFixture mysql, RedisFixture
         Assert.Equal(AuthorizationDecision.Allow, evaluator.Evaluate(input, PermissionNames.FileRead).Decision);
         var index = await client.ExecuteAsync("list-scope-projections", new[] { $"security:scope-index:tenant:{tenant.Id:N}" }, Array.Empty<string>(), CancellationToken.None);
         Assert.Contains($"dms:file:{file.Id:N}", index);
-        await service.BlockAsync(session.Id, CancellationToken.None);
-        session.Revoke(); await db.SaveChangesAsync();
+        var secondToken = await new LoginCommandHandler(new UserRepository(db), new PasswordHasher(), new UserAuthorizationRepository(db), db, service)
+            .Handle(new LoginCommand(user.Email, "integration-password"), CancellationToken.None);
+        var secondSessionId = Guid.Parse(new JwtSecurityTokenHandler().ReadJwtToken(secondToken.AccessToken).Claims.Single(x => x.Type == "sid").Value);
+        var current = new SessionCurrentUser(user.Id, session.Id, tenant.Id);
+        Assert.True((await new LogoutCommandHandler(db, current, service).Handle(new(), CancellationToken.None)).IsSuccess);
+        Assert.Equal(2, await db.RefreshTokens.CountAsync(x => x.UserId == user.Id && x.RevokedAt != null));
         input = await store.ReadAsync(actor, new("file", file.Id), CancellationToken.None);
         Assert.NotEqual(AuthorizationDecision.Allow, evaluator.Evaluate(input, PermissionNames.FileRead).Decision);
+        var secondInput = await store.ReadAsync(new(user.Id, secondSessionId), new("file", file.Id), CancellationToken.None);
+        Assert.NotEqual(AuthorizationDecision.Allow, evaluator.Evaluate(secondInput, PermissionNames.FileRead).Decision);
         await redis.RestartAsync();
         await Assert.ThrowsAsync<SecurityUnavailableException>(() => readiness.AssertReadyAsync(CancellationToken.None));
         using var restoredClient = redis.CreateClient();
@@ -204,5 +315,15 @@ public sealed class AuthSessionIntegrationTests(MySqlFixture mysql, RedisFixture
         await new AuthSessionService(db, restoredClient, restoredReadiness, Jwt()).RebuildAsync(CancellationToken.None);
         input = await new RedisAccessSnapshotStore(restoredClient, restoredReadiness).ReadAsync(actor, new("file", file.Id), CancellationToken.None);
         Assert.NotEqual(AuthorizationDecision.Allow, evaluator.Evaluate(input, PermissionNames.FileRead).Decision);
+        secondInput = await new RedisAccessSnapshotStore(restoredClient, restoredReadiness).ReadAsync(new(user.Id, secondSessionId), new("file", file.Id), CancellationToken.None);
+        Assert.NotEqual(AuthorizationDecision.Allow, evaluator.Evaluate(secondInput, PermissionNames.FileRead).Decision);
+    }
+
+    private sealed record SessionCurrentUser(Guid? UserId, Guid? SessionId, Guid? TenantId) : ICurrentUserService
+    {
+        public Guid? DepartmentId => null;
+        public string? Email => null;
+        public string? Role => "Employee";
+        public bool IsAuthenticated => true;
     }
 }
