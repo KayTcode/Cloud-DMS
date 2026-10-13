@@ -13,3 +13,9 @@
 - Chưa chạy migration trên DB người dùng. Chưa chạy test, integration hay EXPLAIN theo thứ tự code trước, test sau.
 - Giai đoạn test cần fixture MySQL thật cho tiếng Việt ở tên/nội dung, token ngắn, ký tự `%`/`_` literal, đầu vào SQL injection, tenant/ACL/scan trước LIMIT, generation lỗi/cũ, file không hỗ trợ, cùng EXPLAIN trên fixture đủ lớn. Cần kiểm tra SQL EF sinh ra, FULLTEXT index và hiệu năng `LIKE` token ngắn.
 - Candidate giới hạn tổng offset + limit tối đa 1.000. `HasMore` chỉ phản ánh cửa sổ candidate đã truy vấn trong budget này. Bộ điều phối phải xác nhận ACL lại trước response và xử lý quyền bị thu hồi giữa truy vấn.
+
+## Bổ sung sau review
+
+- Query chứa `%`, `_` hoặc `\\` dùng `LIKE` đã escape ở cả tên và nội dung, không để tokenizer FULLTEXT bỏ ký tự literal.
+- Điểm và ordinal của hit nội dung nay cùng thuộc chunk có điểm cao nhất; hòa điểm chọn ordinal nhỏ nhất.
+- Cần kiểm tra trong pha test SQL dịch cho `GroupBy` + `First`, đặc biệt thứ tự chunk và ký tự literal trên MySQL thật.

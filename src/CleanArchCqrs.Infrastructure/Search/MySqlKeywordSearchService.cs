@@ -27,7 +27,9 @@ public sealed class MySqlKeywordSearchService(AppDbContext db, IFileAclQuery acl
         var scope = await new FileSearchSqlScope(acl).ReadAsync(context, request.FolderId, cancellationToken);
         var window = Math.Min(MaxCandidates, offset + request.CandidateLimit + 1);
         var pattern = "%" + EscapeLike(query) + "%";
-        var shortToken = query.Length < 3;
+        // Full-text tokenization can discard punctuation. Literal wildcard searches
+        // must be verified by LIKE rather than accepted from MATCH alone.
+        var useLikeOnly = query.Length < 3 || query.IndexOfAny(['%', '_', '\\']) >= 0;
 
         // MATCH arguments are EF parameters. LIKE explicitly escapes user wildcards.
         var metadata = await scope
@@ -35,7 +37,7 @@ public sealed class MySqlKeywordSearchService(AppDbContext db, IFileAclQuery acl
             {
                 file.Id, file.DocumentVersion, file.ActiveSearchGenerationId,
                 LikeName = EF.Functions.Like(file.Name, pattern, "\\"),
-                FullTextScore = shortToken ? 0.0 : EF.Functions.Match(
+                FullTextScore = useLikeOnly ? 0.0 : EF.Functions.Match(
                     file.Name, query, MySqlMatchSearchMode.NaturalLanguage)
             })
             .Where(hit => hit.LikeName || hit.FullTextScore > 0)
@@ -61,17 +63,14 @@ public sealed class MySqlKeywordSearchService(AppDbContext db, IFileAclQuery acl
             {
                 FileId = hit.file.Id, hit.file.DocumentVersion, GenerationId = hit.generation.Id,
                 hit.chunk.Ordinal,
-                Score = shortToken
+                Score = useLikeOnly
                     ? (EF.Functions.Like(hit.chunk.Text, pattern, "\\") ? 1.0 : 0.0)
                     : EF.Functions.Match(hit.chunk.Text, query, MySqlMatchSearchMode.NaturalLanguage)
             })
             .Where(hit => hit.Score > 0)
             .GroupBy(hit => new { hit.FileId, hit.DocumentVersion, hit.GenerationId })
-            .Select(group => new
-            {
-                group.Key.FileId, group.Key.DocumentVersion, group.Key.GenerationId,
-                Score = group.Max(hit => hit.Score), Ordinal = group.Min(hit => hit.Ordinal)
-            })
+            .Select(group => group.OrderByDescending(hit => hit.Score)
+                .ThenBy(hit => hit.Ordinal).First())
             .OrderByDescending(hit => hit.Score).ThenBy(hit => hit.FileId)
             .Take(window)
             .ToArrayAsync(cancellationToken);
