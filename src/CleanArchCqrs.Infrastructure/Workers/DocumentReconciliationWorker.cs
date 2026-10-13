@@ -42,9 +42,9 @@ public sealed class DocumentReconciliationWorker(IServiceScopeFactory scopes, IO
                         && m.FileId == file.Id && m.DocumentVersion == file.DocumentVersion
                         && (m.Status == DocumentOutboxStatus.Pending || m.Status == DocumentOutboxStatus.Processing), ct);
                     if (pending) continue;
-                    if (file.Lifecycle == FileLifecycle.Active && await db.DocumentOutboxMessages.IgnoreQueryFilters()
+                    var awaitingCoverage = file.Lifecycle == FileLifecycle.Active && await db.DocumentOutboxMessages.IgnoreQueryFilters()
                         .AnyAsync(m => m.TenantId == file.TenantId && m.FileId == file.Id && m.DocumentVersion == file.DocumentVersion
-                            && m.FailureCode == "SCAN_AWAITING_VERIFICATION" && m.Payload == options.Value.CoverageKey, ct)) continue;
+                            && m.FailureCode == "SCAN_AWAITING_VERIFICATION" && m.Payload == options.Value.CoverageKey, ct);
                     var incomplete = file.Lifecycle == FileLifecycle.Purging
                         || file.Lifecycle == FileLifecycle.Active && !file.IsDeleted && (file.ActiveSearchGenerationId == null
                             || !await db.FileSearchGenerations.IgnoreQueryFilters().AnyAsync(g => g.Id == file.ActiveSearchGenerationId
@@ -56,14 +56,16 @@ public sealed class DocumentReconciliationWorker(IServiceScopeFactory scopes, IO
                             && g.FileId == file.Id && g.Id != file.ActiveSearchGenerationId, ct)
                         || await db.FilePreviewArtifacts.IgnoreQueryFilters().AnyAsync(a => a.TenantId == file.TenantId
                             && a.FileId == file.Id && a.DocumentVersion < file.DocumentVersion, ct);
-                    if (!incomplete && !cleanup) continue;
+                    // Coverage suppresses scans only. Retained objects/chunks/artifacts still need reclamation.
+                    var needsScan = incomplete && !awaitingCoverage;
+                    if (!needsScan && !cleanup) continue;
                     var window = DateTimeOffset.UtcNow.ToUnixTimeSeconds() / 1800;
                     var key = $"reconcile:{file.Id:N}:{file.DocumentVersion}:{window}";
                     if (await db.DocumentOutboxMessages.IgnoreQueryFilters().AnyAsync(m => m.TenantId == file.TenantId && m.IdempotencyKey == key, ct)) continue;
                     db.DocumentOutboxMessages.Add(new DocumentOutboxMessage
                     {
                         TenantId = file.TenantId, FileId = file.Id, DocumentVersion = file.DocumentVersion,
-                        EventType = incomplete ? "DocumentReconcile" : "DocumentRetention", IdempotencyKey = key, Payload = "{}"
+                        EventType = needsScan ? "DocumentReconcile" : "DocumentRetention", IdempotencyKey = key, Payload = "{}"
                     });
                     await db.SaveChangesAsync(ct);
                 }

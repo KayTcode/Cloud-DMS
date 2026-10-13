@@ -93,6 +93,20 @@ public sealed class FileTextExtractor(IOptions<DocumentIndexOptions> options) : 
             if (totalChars > DocumentIndexOptions.MaxCharacters) throw new InvalidDataException();
             if (!string.IsNullOrWhiteSpace(text)) sections.Add(new(text, location));
         }
+        bool SectionBudgetAvailable()
+        {
+            ct.ThrowIfCancellationRequested();
+            if (sections.Count < DocumentIndexOptions.MaxPages) return true;
+            partial = true;
+            sectionLimit = true;
+            return false;
+        }
+        void AppendBounded(StringBuilder builder, string value, int limit)
+        {
+            ct.ThrowIfCancellationRequested();
+            if (value.Length > limit - builder.Length) throw new InvalidDataException();
+            builder.Append(value);
+        }
         string mime;
         var types = await Xml(zip.GetEntry("[Content_Types].xml")!);
         if (types.Descendants().Attributes("ContentType").Any(a => a.Value.Contains("macroEnabled", StringComparison.OrdinalIgnoreCase)))
@@ -105,7 +119,7 @@ public sealed class FileTextExtractor(IOptions<DocumentIndexOptions> options) : 
             int index = 0;
             foreach (var paragraph in xml.Descendants(w + "p"))
             {
-                ct.ThrowIfCancellationRequested();
+                if (!SectionBudgetAvailable()) break;
                 Add(string.Concat(paragraph.Descendants(w + "t").Select(t => t.Value)), $"paragraph:{++index}");
             }
         }
@@ -113,26 +127,52 @@ public sealed class FileTextExtractor(IOptions<DocumentIndexOptions> options) : 
         {
             mime = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
             XNamespace s = "http://schemas.openxmlformats.org/spreadsheetml/2006/main";
-            var shared = zip.GetEntry("xl/sharedStrings.xml") is { } strings
-                ? (await Xml(strings)).Descendants(s + "si").Select(x => string.Concat(x.Descendants(s + "t").Select(t => t.Value))).ToArray()
-                : [];
+            var shared = new List<string>();
+            var sharedChars = 0;
+            if (zip.GetEntry("xl/sharedStrings.xml") is { } strings)
+            {
+                foreach (var item in (await Xml(strings)).Descendants(s + "si"))
+                {
+                    ct.ThrowIfCancellationRequested();
+                    if (shared.Count >= 100000) throw new InvalidDataException();
+                    var value = new StringBuilder();
+                    foreach (var part in item.Descendants(s + "t"))
+                        AppendBounded(value, part.Value, DocumentIndexOptions.MaxCharacters - sharedChars);
+                    sharedChars += value.Length;
+                    shared.Add(value.ToString());
+                }
+            }
             var sheets = zip.Entries.Where(e => e.FullName.StartsWith("xl/worksheets/sheet", StringComparison.Ordinal)
                 && e.FullName.EndsWith(".xml", StringComparison.Ordinal)).OrderBy(e => e.FullName, StringComparer.Ordinal).ToArray();
             partial = sheets.Length > DocumentIndexOptions.MaxPages;
             foreach (var sheet in sheets.Take(DocumentIndexOptions.MaxPages))
             {
+                if (!SectionBudgetAvailable()) break;
                 var xml = await Xml(sheet);
                 foreach (var row in xml.Descendants(s + "row"))
                 {
-                    ct.ThrowIfCancellationRequested();
-                    var values = row.Elements(s + "c").Select(c =>
+                    if (!SectionBudgetAvailable()) break;
+                    // Shared-string references can amplify a tiny worksheet into gigabytes. Charge each
+                    // cell before append, including separators, and never materialize an unbounded row.
+                    var rowText = new StringBuilder();
+                    var rowLimit = Math.Min(1024 * 1024, DocumentIndexOptions.MaxCharacters - totalChars);
+                    var firstCell = true;
+                    foreach (var cell in row.Elements(s + "c"))
                     {
-                        var value = c.Element(s + "v")?.Value ?? string.Concat(c.Descendants(s + "t").Select(t => t.Value));
-                        if ((string?)c.Attribute("t") == "s")
-                            return int.TryParse(value, out var i) && i >= 0 && i < shared.Length ? shared[i] : "";
-                        return value;
-                    });
-                    Add(string.Join("\t", values), $"{sheet.FullName}:row:{(string?)row.Attribute("r")}");
+                        ct.ThrowIfCancellationRequested();
+                        if (!firstCell) AppendBounded(rowText, "\t", rowLimit);
+                        firstCell = false;
+                        var value = cell.Element(s + "v")?.Value;
+                        if ((string?)cell.Attribute("t") == "s")
+                        {
+                            if (int.TryParse(value, out var i) && i >= 0 && i < shared.Count)
+                                AppendBounded(rowText, shared[i], rowLimit);
+                        }
+                        else if (value is not null) AppendBounded(rowText, value, rowLimit);
+                        else foreach (var part in cell.Descendants(s + "t"))
+                            AppendBounded(rowText, part.Value, rowLimit);
+                    }
+                    Add(rowText.ToString(), $"{sheet.FullName}:row:{(string?)row.Attribute("r")}");
                 }
             }
         }
@@ -144,7 +184,10 @@ public sealed class FileTextExtractor(IOptions<DocumentIndexOptions> options) : 
                 && e.FullName.EndsWith(".xml", StringComparison.Ordinal)).OrderBy(e => e.FullName, StringComparer.Ordinal).ToArray();
             partial = slides.Length > DocumentIndexOptions.MaxPages;
             foreach (var slide in slides.Take(DocumentIndexOptions.MaxPages))
+            {
+                if (!SectionBudgetAvailable()) break;
                 Add(string.Join("\n", (await Xml(slide)).Descendants(a + "t").Select(t => t.Value)), slide.FullName);
+            }
         }
         else return new("application/octet-stream", [], false, "UNSUPPORTED_ZIP");
         return new(mime, sections, partial, sectionLimit ? "SECTION_LIMIT" : partial ? "PAGE_LIMIT" : sections.Count == 0 ? "NO_EXTRACTABLE_TEXT" : null);

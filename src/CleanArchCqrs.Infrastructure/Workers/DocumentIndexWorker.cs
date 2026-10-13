@@ -41,7 +41,7 @@ public sealed class DocumentIndexWorker(IServiceScopeFactory scopes, IOptions<Do
             .ExecuteUpdateAsync(s => s.SetProperty(m => m.Status, DocumentOutboxStatus.Failed)
                 .SetProperty(m => m.FailureCode, "LEASE_EXHAUSTED"), ct);
         var candidate = await db.DocumentOutboxMessages.IgnoreQueryFilters().AsNoTracking()
-            .Where(m => m.AttemptCount < 8 && (m.Status == DocumentOutboxStatus.Pending && m.NextAttemptAt <= now
+            .Where(m => m.AttemptCount < 8 && m.NextAttemptAt <= now && (m.Status == DocumentOutboxStatus.Pending
                 || m.Status == DocumentOutboxStatus.Processing && m.LeaseExpiresAt <= now))
             .OrderBy(m => m.NextAttemptAt).ThenBy(m => m.CreatedAt).FirstOrDefaultAsync(ct);
         if (candidate is null) return false;
@@ -55,12 +55,22 @@ public sealed class DocumentIndexWorker(IServiceScopeFactory scopes, IOptions<Do
         command.CommandText = "SELECT GET_LOCK(@name, 0)";
         var name = command.CreateParameter(); name.ParameterName = "@name"; name.Value = $"dms-index:{candidate.FileId:N}";
         command.Parameters.Add(name);
-        if (Convert.ToInt32(await command.ExecuteScalarAsync(ct)) != 1) return false;
+        if (Convert.ToInt32(await command.ExecuteScalarAsync(ct)) != 1)
+        {
+            // Move all eligible events for the busy file briefly out of the selection window. Do not
+            // consume attempts or touch live leases; immediately let this worker select another file.
+            await db.DocumentOutboxMessages.IgnoreQueryFilters().Where(m => m.TenantId == candidate.TenantId
+                && m.FileId == candidate.FileId && m.NextAttemptAt <= now && m.AttemptCount < 8
+                && (m.Status == DocumentOutboxStatus.Pending
+                    || m.Status == DocumentOutboxStatus.Processing && m.LeaseExpiresAt <= now))
+                .ExecuteUpdateAsync(s => s.SetProperty(m => m.NextAttemptAt, now.AddSeconds(5)), ct);
+            return true;
+        }
         try
         {
             var owner = Guid.NewGuid();
             if (await db.DocumentOutboxMessages.IgnoreQueryFilters().Where(m => m.Id == candidate.Id && m.AttemptCount < 8
-                && (m.Status == DocumentOutboxStatus.Pending && m.NextAttemptAt <= now
+                && m.NextAttemptAt <= now && (m.Status == DocumentOutboxStatus.Pending
                     || m.Status == DocumentOutboxStatus.Processing && m.LeaseExpiresAt <= now))
                 .ExecuteUpdateAsync(s => s.SetProperty(m => m.Status, DocumentOutboxStatus.Processing)
                     .SetProperty(m => m.LeaseOwnerId, owner).SetProperty(m => m.LeaseExpiresAt, now.AddMinutes(3))

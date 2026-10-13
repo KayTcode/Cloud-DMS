@@ -44,3 +44,15 @@ Coverage confirmation là vận hành, không tự introspect cấu hình clamd 
 Sau Task 11 cần test PDF/OOXML/text fixtures, PDF ảnh, malformed ZIP/XML/zip bomb/XXE/macro/giới hạn/encoding; model tokenizer thực multilingual/prefix-special/overlap/chunk truncation và timeout; ClamAV OK/infection/disabled/unavailable/server skip/coverage/oversize/full hash/stream size mismatch; real MySQL claim nhiều process/lease expire/renew/crash/replay/advisory lock loss; scan coordinator Redis pending; old worker sau overwrite/bin/restore/purge; sink failure/stage replay/generation publish cross-tenant FK và active-generation FK (carry Task 1); metadata-only và quyền thu hồi; purge crash giữa physical delete và staging CAS, không refund logical lần hai, retained key không current, read URL TTL; reconciliation legacy thiếu version/source, terminal coverage thay đổi, orphan/preview cleanup. Không sửa/xóa test có sẵn.
 
 Nguồn ruling coverage: [ClamAV Scanning](https://docs.clamav.net/manual/Usage/Scanning.html), [clamd.conf man](https://github.com/Cisco-Talos/clamav/blob/main/docs/man/clamd.conf.5.in). Hai tài liệu chỉ hỗ trợ giới hạn/cấu hình engine, không thay cho test deployment.
+
+## Sửa review vòng 1
+
+BASE sửa: `3be7323`. Đã đối chiếu và sửa ba finding Important của `task-7-review.md`:
+
+- XLSX kiểm budget từng cell/separator trước append; row tối đa 1 Mi ký tự và không vượt phần còn lại của tổng 16M ký tự. Shared-string table kiểm tổng ký tự và tối đa 100.000 mục ngay khi tạo, có cancellation từng mục/đoạn. Không còn `string.Join` dựng nguyên row mở rộng trước kiểm budget. Dừng đọc thêm row/sheet khi đạt 1.000 section; DOCX/PPTX cũng dừng section tại giới hạn.
+- Cùng coverage chỉ chặn enqueue scan. Nếu còn version/generation/artifact cũ, reconciliation enqueue `DocumentRetention`, nhánh processor này chạy trước tải/quét object hiện tại. File Pending quá lớn vẫn thu hồi staging/version cũ sau retention mà không quét lại current object.
+- Khi advisory lock file bận, worker CAS lùi `NextAttemptAt` 5 giây cho các event đủ điều kiện của chính file đó rồi chọn tiếp ngay. Không tăng attempt, đổi status/owner hoặc gia hạn lease; không chạm lease còn sống. Selection và claim đều áp dụng NextAttemptAt cho cả Pending và Processing hết lease, tránh một expired candidate bận giữ đầu hàng.
+
+Tự review tĩnh đường budget, cancellation, pending-retention và CAS/busy-lock; build API `--no-restore --verbosity quiet` thành công, 0 lỗi/3 warning baseline. Không chạy/viết test hay dùng DB.
+
+Test hoãn bổ sung sau Task 11: shared string lớn lặp hàng nghìn lần cùng row và inline text dài phải dừng bounded, tiến trình còn hoạt động; shared-string table/section cap/cancellation; thay version nhỏ bằng object vượt coverage, giữ nguyên coverage và qua retention phải xóa đúng old version/artifact/generation, hoàn staging đúng một lần và không tải current object; giữ lock X với Pending X đứng trước Y/Z phải nhận Y/Z, attempt X không tăng và lease X không thay đổi; lặp lại với Processing X đã hết lease và nhiều worker tranh claim.
