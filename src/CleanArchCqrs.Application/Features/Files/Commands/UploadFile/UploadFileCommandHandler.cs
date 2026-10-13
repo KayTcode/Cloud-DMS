@@ -170,6 +170,7 @@ public class UploadFileCommandHandler : IRequestHandler<UploadFileCommand, Resul
         // BƯỚC 4: Định tuyến đến đúng Cloud Provider qua StorageServiceFactory
         _logger.LogInformation("Routing upload to provider: {ProviderName} ({ProviderType})", provider.Name, provider.Type);
         var storageService = _storageServiceFactory.CreateService(provider);
+        using var storageLease = storageService as IDisposable;
 
         string? destinationFolderId = request.FolderId.HasValue 
             ? request.FolderId.Value.ToString() 

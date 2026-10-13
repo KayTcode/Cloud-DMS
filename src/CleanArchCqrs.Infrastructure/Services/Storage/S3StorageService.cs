@@ -12,6 +12,7 @@ public sealed class S3StorageService : IStorageService, IDisposable
 {
     private readonly AmazonS3Client _client;
     private readonly S3StorageSettings _settings;
+    private int _disposed;
 
     public S3StorageService(string rawConfigJson)
     {
@@ -55,8 +56,18 @@ public sealed class S3StorageService : IStorageService, IDisposable
 
     public async Task<Stream> DownloadFileAsync(string storageKey, CancellationToken cancellationToken = default)
     {
-        var response = await _client.GetObjectAsync(_settings.Bucket, storageKey, cancellationToken);
-        return new OwnedS3ResponseStream(response, _client);
+        GetObjectResponse? response = null;
+        try
+        {
+            response = await _client.GetObjectAsync(_settings.Bucket, storageKey, cancellationToken);
+            return new OwnedS3ResponseStream(response, this);
+        }
+        catch
+        {
+            try { response?.Dispose(); }
+            finally { Dispose(); }
+            throw;
+        }
     }
 
     public async Task<bool> DeleteFileAsync(string storageKey, CancellationToken cancellationToken = default)
@@ -76,18 +87,19 @@ public sealed class S3StorageService : IStorageService, IDisposable
     public Task<string> CreateFolderAsync(string folderName, string? parentFolderId = null,
         CancellationToken cancellationToken = default) => Task.FromResult("objects");
 
-    public async Task<Uri> CreateReadUrlAsync(string key, string fileName, string contentType,
+    public async Task<CleanArchCqrs.Application.Common.Models.Files.ObjectReadAccess> CreateReadUrlAsync(string key, string fileName, string contentType,
         string purpose, TimeSpan lifetime, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
         await _client.GetObjectMetadataAsync(_settings.Bucket, key, cancellationToken);
         var disposition = purpose == "download" ? "attachment" : "inline";
+        var expiresAt = DateTimeOffset.UtcNow.Add(lifetime);
         var request = new GetPreSignedUrlRequest
         {
             BucketName = _settings.Bucket,
             Key = key,
             Verb = HttpVerb.GET,
-            Expires = DateTime.UtcNow.Add(lifetime),
+            Expires = expiresAt.UtcDateTime,
             ResponseHeaderOverrides = new ResponseHeaderOverrides
             {
                 ContentDisposition = SafeDisposition(disposition, fileName),
@@ -95,7 +107,7 @@ public sealed class S3StorageService : IStorageService, IDisposable
                 CacheControl = "no-store"
             }
         };
-        return new Uri(await _client.GetPreSignedURLAsync(request));
+        return new(new Uri(await _client.GetPreSignedURLAsync(request)), expiresAt, true);
     }
 
     private static string SafeDisposition(string disposition, string value)
@@ -108,11 +120,16 @@ public sealed class S3StorageService : IStorageService, IDisposable
         return $"{disposition}; filename=\"{ascii}\"; filename*=UTF-8''{Uri.EscapeDataString(name)}";
     }
 
-    public void Dispose() => _client.Dispose();
+    public void Dispose()
+    {
+        if (Interlocked.Exchange(ref _disposed, 1) == 0)
+            _client.Dispose();
+    }
 
-    private sealed class OwnedS3ResponseStream(GetObjectResponse response, AmazonS3Client client) : Stream
+    private sealed class OwnedS3ResponseStream(GetObjectResponse response, S3StorageService owner) : Stream
     {
         private readonly Stream _inner = response.ResponseStream;
+        private int _disposed;
         public override bool CanRead => _inner.CanRead;
         public override bool CanSeek => _inner.CanSeek;
         public override bool CanWrite => false;
@@ -126,14 +143,24 @@ public sealed class S3StorageService : IStorageService, IDisposable
         public override void Write(byte[] buffer, int offset, int count) => throw new NotSupportedException();
         protected override void Dispose(bool disposing)
         {
-            if (disposing) { response.Dispose(); client.Dispose(); }
+            if (disposing && Interlocked.Exchange(ref _disposed, 1) == 0)
+            {
+                try { response.Dispose(); }
+                finally { owner.Dispose(); }
+            }
             base.Dispose(disposing);
         }
         public override async ValueTask DisposeAsync()
         {
-            await _inner.DisposeAsync();
-            response.Dispose();
-            client.Dispose();
+            if (Interlocked.Exchange(ref _disposed, 1) == 0)
+            {
+                try { await _inner.DisposeAsync(); }
+                finally
+                {
+                    try { response.Dispose(); }
+                    finally { owner.Dispose(); }
+                }
+            }
             await base.DisposeAsync();
         }
     }

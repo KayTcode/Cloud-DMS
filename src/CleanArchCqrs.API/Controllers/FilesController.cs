@@ -158,8 +158,7 @@ public class FilesController : ApiControllerBase
         [FromQuery] string purpose = "download", CancellationToken cancellationToken = default)
     {
         Response.Headers.CacheControl = "no-store";
-        var apiOrigin = new Uri($"{Request.Scheme}://{Request.Host}");
-        var result = await Sender.Send(new GetFileReadAccessQuery(id, purpose, apiOrigin), cancellationToken);
+        var result = await Sender.Send(new GetFileReadAccessQuery(id, purpose), cancellationToken);
         return HandleResult(result);
     }
 

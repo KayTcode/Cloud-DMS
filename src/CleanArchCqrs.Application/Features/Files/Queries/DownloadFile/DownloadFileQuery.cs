@@ -38,12 +38,15 @@ public class DownloadFileQueryHandler(
             return Result<DownloadFileResult>.Failure("Kho lưu trữ không khả dụng.");
 
         Stream stream;
+        IStorageService? storageService = null;
         try
         {
-            stream = await storageFactory.CreateService(provider).DownloadFileAsync(content.ObjectKey, ct);
+            storageService = storageFactory.CreateService(provider);
+            stream = await storageService.DownloadFileAsync(content.ObjectKey, ct);
         }
         catch
         {
+            (storageService as IDisposable)?.Dispose();
             return Result<DownloadFileResult>.Failure("Không thể tải tệp tin từ kho lưu trữ.");
         }
         try

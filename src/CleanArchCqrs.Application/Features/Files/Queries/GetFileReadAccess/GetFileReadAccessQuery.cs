@@ -9,8 +9,8 @@ using Microsoft.EntityFrameworkCore;
 
 namespace CleanArchCqrs.Application.Features.Files.Queries.GetFileReadAccess;
 
-public sealed record ReadAccessOptions(TimeSpan Lifetime);
-public sealed record GetFileReadAccessQuery(Guid FileId, string Purpose, Uri? ApiOrigin = null) : IRequest<Result<FileReadAccessResult>>;
+public sealed record ReadAccessOptions(TimeSpan Lifetime, Uri? PublicApiOrigin);
+public sealed record GetFileReadAccessQuery(Guid FileId, string Purpose) : IRequest<Result<FileReadAccessResult>>;
 public sealed record FileReadAccessResult(Uri Url, DateTimeOffset ExpiresAt, long DocumentVersion,
     string ContentType, long SizeBytes, bool SupportsRange);
 
@@ -24,6 +24,8 @@ public sealed class GetFileReadAccessQueryHandler(
         var context = await contextResolver.ResolveContextAsync(ct);
         if (request.Purpose is not ("download" or "inline" or "stream"))
             return Result<FileReadAccessResult>.Failure("Mục đích đọc không hợp lệ.");
+        if (request.Purpose == "inline" && options.PublicApiOrigin is null)
+            return Result<FileReadAccessResult>.Failure("Chưa cấu hình origin API công khai.");
         var grant = await access.CheckAsync(context, request.FileId, PermissionNames.FileRead, ct);
         if (grant is null)
             return Result<FileReadAccessResult>.Failure("Không thể đọc tệp tin.");
@@ -41,8 +43,8 @@ public sealed class GetFileReadAccessQueryHandler(
 
         var read = await signer.CreateAsync(new ReadUrlRequest(provider.Id, content.ObjectKey,
             file.Name, contentType, request.Purpose, options.Lifetime), ct);
-        if (request.Purpose == "inline" && (request.ApiOrigin is null
-            || read.Url.GetLeftPart(UriPartial.Authority) == request.ApiOrigin.GetLeftPart(UriPartial.Authority)
+        if (request.Purpose == "inline" && (Uri.Compare(read.Url, options.PublicApiOrigin!, UriComponents.SchemeAndServer,
+                UriFormat.Unescaped, StringComparison.OrdinalIgnoreCase) == 0
             || read.Url.Scheme != "https" && !read.Url.IsLoopback))
             return Result<FileReadAccessResult>.Failure("Origin đọc inline không hợp lệ.");
 

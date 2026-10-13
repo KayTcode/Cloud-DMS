@@ -25,8 +25,7 @@ public sealed class ObjectReadUrlService(IApplicationDbContext db, IAesEncryptio
             || string.IsNullOrWhiteSpace(request.ObjectKey))
             throw new ArgumentException("Invalid read URL request.");
         using var adapter = new S3StorageService(encryption.Decrypt(provider.ConfigEncrypted));
-        var url = await adapter.CreateReadUrlAsync(request.ObjectKey, request.FileName,
+        return await adapter.CreateReadUrlAsync(request.ObjectKey, request.FileName,
             request.ContentType, request.Purpose, request.Lifetime, cancellationToken);
-        return new ObjectReadAccess(url, DateTimeOffset.UtcNow.Add(request.Lifetime), true);
     }
 }

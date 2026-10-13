@@ -56,8 +56,18 @@ namespace CleanArchCqrs.Infrastructure.DependencyInjection
             var readTtlSeconds = configuration.GetValue<int?>("ReadAccess:UrlTtlSeconds") ?? 120;
             if (readTtlSeconds is < 1 or > 600)
                 throw new InvalidOperationException("ReadAccess:UrlTtlSeconds must be between 1 and 600.");
+            var publicOriginText = configuration["ReadAccess:PublicApiOrigin"];
+            Uri? publicOrigin = null;
+            if (!string.IsNullOrWhiteSpace(publicOriginText))
+            {
+                if (!Uri.TryCreate(publicOriginText, UriKind.Absolute, out publicOrigin)
+                    || publicOrigin.Scheme is not ("https" or "http")
+                    || publicOrigin.AbsolutePath != "/" || !string.IsNullOrEmpty(publicOrigin.Query)
+                    || !string.IsNullOrEmpty(publicOrigin.Fragment) || !string.IsNullOrEmpty(publicOrigin.UserInfo))
+                    throw new InvalidOperationException("ReadAccess:PublicApiOrigin must be an HTTP(S) origin.");
+            }
             services.AddSingleton(new CleanArchCqrs.Application.Features.Files.Queries.GetFileReadAccess.ReadAccessOptions(
-                TimeSpan.FromSeconds(readTtlSeconds)));
+                TimeSpan.FromSeconds(readTtlSeconds), publicOrigin));
             services.AddScoped<IQuotaReleaseWriter, MySqlQuotaReleaseWriter>();
             services.AddScoped<CleanArchCqrs.Application.Features.Files.Commands.ManageAccess.FileMutationService>();
             services.AddScoped<IGoogleAuthService>(provider =>
