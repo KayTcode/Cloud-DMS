@@ -1,3 +1,4 @@
+if redis.call('EXISTS', 'security:bootstrap-lock') == 1 then return 'rebuilding' end
 local currentRaw = redis.call('GET', KEYS[1])
 if not currentRaw then
     return 'not-owner'

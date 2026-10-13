@@ -49,6 +49,8 @@ namespace CleanArchCqrs.Infrastructure.DependencyInjection
             services.Configure<JwtOptions>(configuration.GetSection(JwtOptions.SectionName));
 
             services.AddScoped<IJwtTokenService, JwtTokenService>();
+            services.AddScoped<IAuthSessionService, AuthSessionService>();
+            services.AddScoped<IFileAccessContextResolver, FileAccessContextResolver>();
             services.AddScoped<IGoogleAuthService>(provider =>
                 new GoogleAuthService(
                     new HttpClient(),
@@ -57,7 +59,8 @@ namespace CleanArchCqrs.Infrastructure.DependencyInjection
                     provider.GetRequiredService<IUserRepository>(),
                     provider.GetRequiredService<IUserAuthorizationRepository>(),
                     provider.GetRequiredService<IJwtTokenService>(),
-                    provider.GetRequiredService<IApplicationDbContext>()));
+                    provider.GetRequiredService<IApplicationDbContext>(),
+                    provider.GetRequiredService<IAuthSessionService>()));
             services.AddScoped<IEmailService, EmailService>();
             services.AddScoped<IUserRepository, UserRepository>();
             services.AddScoped<IUserAuthorizationRepository, UserAuthorizationRepository>();

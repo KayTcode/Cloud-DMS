@@ -1,3 +1,4 @@
+if redis.call('EXISTS', 'security:bootstrap-lock') == 1 then return 'rebuilding' end
 local meta = redis.call('HMGET', KEYS[1], 'generation', 'state', 'serverRunId', 'schemaVersion')
 if meta[1] ~= ARGV[1]
     or meta[2] ~= 'ready'

@@ -24,13 +24,14 @@ public class UserLoginAndAuditTests
     public UserLoginAndAuditTests()
     {
         _passwordHasherMock.Setup(x => x.Verify(It.IsAny<string>(), It.IsAny<string>())).Returns(true);
-        _jwtTokenServiceMock.Setup(x => x.GenerateAccessToken(It.IsAny<User>(), It.IsAny<string>(), It.IsAny<IEnumerable<string>>()))
+        _jwtTokenServiceMock.Setup(x => x.GenerateAccessToken(It.IsAny<User>(), It.IsAny<string>(), It.IsAny<IEnumerable<string>>(), It.IsAny<Guid?>()))
             .Returns(new JwtTokenResult("token", DateTime.UtcNow.AddMinutes(15)));
         _userAuthRepoMock.Setup(x => x.GetRoleAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>())).ReturnsAsync("Employee");
         _userAuthRepoMock.Setup(x => x.GetPermissionsAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new List<string>());
     }
 
+    private static IAuthSessionService CreateSessions() { var mock = new Mock<IAuthSessionService>(); mock.Setup(x => x.IssueAsync(It.IsAny<User>(), It.IsAny<string>(), It.IsAny<IEnumerable<string>>(), It.IsAny<Guid>(), It.IsAny<CancellationToken>())).ReturnsAsync(new JwtTokenResult("token", DateTime.UtcNow.AddMinutes(15))); return mock.Object; }
     [Fact]
     public void MarkLogin_ShouldUpdateLastLoginAtTimestamp()
     {
@@ -52,6 +53,7 @@ public class UserLoginAndAuditTests
         // Arrange
         using var context = TestDbContextFactory.Create();
         var user = new User(Guid.NewGuid(), null, "john@test.com", "hashed_password", "John", "Doe", null);
+        user.EmailConfirmed = true;
         context.Users.Add(user);
         await context.SaveChangesAsync();
 
@@ -63,7 +65,7 @@ public class UserLoginAndAuditTests
             _passwordHasherMock.Object,
             _jwtTokenServiceMock.Object,
             _userAuthRepoMock.Object,
-            context);
+            context, CreateSessions());
 
         // Act
         var result = await handler.Handle(new LoginCommand("john@test.com", "password123"), CancellationToken.None);

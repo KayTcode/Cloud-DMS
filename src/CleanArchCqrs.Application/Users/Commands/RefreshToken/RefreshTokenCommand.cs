@@ -18,15 +18,17 @@ public class RefreshTokenCommandHandler : IRequestHandler<RefreshTokenCommand, R
     private readonly IApplicationDbContext _context;
     private readonly IUserAuthorizationRepository _userAuthorizationRepository;
     private readonly IJwtTokenService _jwtTokenService;
+    private readonly IAuthSessionService _sessions;
 
     public RefreshTokenCommandHandler(
         IApplicationDbContext context,
         IUserAuthorizationRepository userAuthorizationRepository,
-        IJwtTokenService jwtTokenService)
+        IJwtTokenService jwtTokenService, IAuthSessionService sessions)
     {
         _context = context;
         _userAuthorizationRepository = userAuthorizationRepository;
         _jwtTokenService = jwtTokenService;
+        _sessions = sessions;
     }
 
     public async Task<Result<LoginResponseDto>> Handle(RefreshTokenCommand request, CancellationToken cancellationToken)
@@ -53,6 +55,8 @@ public class RefreshTokenCommandHandler : IRequestHandler<RefreshTokenCommand, R
         }
 
         var user = tokenRecord.User;
+        if (!user.IsActive || !user.EmailConfirmed)
+            return Result<LoginResponseDto>.Failure("User account is inactive or unconfirmed.");
         var role = await _userAuthorizationRepository.GetRoleAsync(user.Id, cancellationToken) ?? "Employee";
         var permissions = await _userAuthorizationRepository.GetPermissionsAsync(user.Id, cancellationToken);
 
@@ -60,20 +64,28 @@ public class RefreshTokenCommandHandler : IRequestHandler<RefreshTokenCommand, R
         var newRefreshTokenExpiresAt = DateTime.UtcNow.AddDays(7);
         var newRefreshTokenHash = HashRefreshToken(newRefreshTokenValue);
 
+        await _sessions.BlockAsync(tokenRecord.Id, cancellationToken);
         tokenRecord.Revoke(newRefreshTokenHash);
+        var sessionId = Guid.NewGuid();
 
         await _context.RefreshTokens.AddAsync(
             new DomainRefreshToken(
-                Guid.NewGuid(),
+                sessionId,
                 user.Id,
                 newRefreshTokenHash,
                 newRefreshTokenExpiresAt,
                 null),
             cancellationToken);
 
-        var generatedToken = _jwtTokenService.GenerateAccessToken(user, role, permissions);
-
-        await _context.SaveChangesAsync(cancellationToken);
+        try
+        {
+            await _context.SaveChangesAsync(cancellationToken);
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            return Result<LoginResponseDto>.Failure("Refresh token has already been rotated.");
+        }
+        var generatedToken = await _sessions.IssueAsync(user, role, permissions, sessionId, cancellationToken);
 
         return Result<LoginResponseDto>.Success(new LoginResponseDto(
             generatedToken.AccessToken,

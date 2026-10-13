@@ -22,7 +22,7 @@ public class RefreshTokenConfiguration : IEntityTypeConfiguration<RefreshToken>
         builder.Property(rt => rt.ExpiresAt)
             .IsRequired();
 
-        builder.Property(rt => rt.RevokedAt);
+        builder.Property(rt => rt.RevokedAt).IsConcurrencyToken();
 
         builder.Property(rt => rt.ReplacedByTokenHash)
             .HasMaxLength(500);

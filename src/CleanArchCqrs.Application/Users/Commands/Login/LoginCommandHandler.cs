@@ -14,6 +14,7 @@ namespace CleanArchCqrs.Application.Users.Commands.Login
         private readonly IUserRepository _userRepository;
         private readonly IPasswordHasher _passswordHasher;
         private readonly IJwtTokenService _jwtTokenService;
+        private readonly IAuthSessionService _sessions;
         private readonly IUserAuthorizationRepository _userAuthorizationRepository;
         private readonly IApplicationDbContext _context;
 
@@ -22,11 +23,12 @@ namespace CleanArchCqrs.Application.Users.Commands.Login
             IPasswordHasher passswordHasher,
             IJwtTokenService jwtTokenService,
             IUserAuthorizationRepository userAuthorizationRepository,
-            IApplicationDbContext context)
+            IApplicationDbContext context, IAuthSessionService sessions)
         {
             _userRepository = userRepository;
             _passswordHasher = passswordHasher;
             _jwtTokenService = jwtTokenService;
+            _sessions = sessions;
             _userAuthorizationRepository = userAuthorizationRepository;
             _context = context;
         }
@@ -74,16 +76,15 @@ namespace CleanArchCqrs.Application.Users.Commands.Login
                     cancellationToken);
 
             var resolvedRole = role ?? "Employee";
-            var token =
-                _jwtTokenService.GenerateAccessToken(user, resolvedRole, permissions);
-
+            user.MarkLogin();
+            var sessionId = Guid.NewGuid();
             var refreshToken = Guid.NewGuid().ToString("N");
             var refreshTokenExpiresAt = DateTime.UtcNow.AddDays(7);
             var refreshTokenHash = HashRefreshToken(refreshToken);
 
             await _context.RefreshTokens.AddAsync(
                 new DomainRefreshToken(
-                    Guid.NewGuid(),
+                    sessionId,
                     user.Id,
                     refreshTokenHash,
                     refreshTokenExpiresAt,
@@ -91,6 +92,7 @@ namespace CleanArchCqrs.Application.Users.Commands.Login
                 cancellationToken);
 
             await _context.SaveChangesAsync(cancellationToken);
+            var token = await _sessions.IssueAsync(user, resolvedRole, permissions, sessionId, cancellationToken);
 
             return new LoginResponseDto(
                 token.AccessToken,

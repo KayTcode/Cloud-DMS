@@ -15,6 +15,8 @@ public class CurrentUserService : ICurrentUserService
 
     private ClaimsPrincipal? User => _httpContextAccessor.HttpContext?.User;
 
+    public Guid? SessionId => Guid.TryParse(User?.FindFirst("sid")?.Value, out var id) && id != Guid.Empty ? id : null;
+
     public Guid? UserId
     {
         get

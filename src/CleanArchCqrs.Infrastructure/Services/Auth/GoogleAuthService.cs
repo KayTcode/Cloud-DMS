@@ -29,6 +29,7 @@ public sealed class GoogleAuthService : IGoogleAuthService
     private readonly IUserRepository _userRepository;
     private readonly IUserAuthorizationRepository _userAuthorizationRepository;
     private readonly IJwtTokenService _jwtTokenService;
+    private readonly IAuthSessionService _sessions;
     private readonly IApplicationDbContext _context;
 
     public GoogleAuthService(
@@ -38,7 +39,7 @@ public sealed class GoogleAuthService : IGoogleAuthService
         IUserRepository userRepository,
         IUserAuthorizationRepository userAuthorizationRepository,
         IJwtTokenService jwtTokenService,
-        IApplicationDbContext context)
+        IApplicationDbContext context, IAuthSessionService sessions)
     {
         _httpClient = httpClient;
         _cache = cache;
@@ -46,6 +47,7 @@ public sealed class GoogleAuthService : IGoogleAuthService
         _userRepository = userRepository;
         _userAuthorizationRepository = userAuthorizationRepository;
         _jwtTokenService = jwtTokenService;
+        _sessions = sessions;
         _context = context;
     }
 
@@ -249,17 +251,18 @@ public sealed class GoogleAuthService : IGoogleAuthService
         var role = await _userAuthorizationRepository.GetRoleAsync(user.Id, cancellationToken) ?? "Employee";
         var permissions = await _userAuthorizationRepository.GetPermissionsAsync(user.Id, cancellationToken);
 
-        var token = _jwtTokenService.GenerateAccessToken(user, role, permissions);
+        var sessionId = Guid.NewGuid();
         var refreshToken = Guid.NewGuid().ToString("N");
         var refreshTokenExpiresAt = DateTime.UtcNow.AddDays(7);
         var refreshTokenHash = HashRefreshToken(refreshToken);
 
         await _context.RefreshTokens.AddAsync(
-            new RefreshToken(Guid.NewGuid(), user.Id, refreshTokenHash, refreshTokenExpiresAt, null),
+            new RefreshToken(sessionId, user.Id, refreshTokenHash, refreshTokenExpiresAt, null),
             cancellationToken);
 
         await _context.SaveChangesAsync(cancellationToken);
 
+        var token = await _sessions.IssueAsync(user, role, permissions, sessionId, cancellationToken);
         var login = new LoginResponseDto(
             token.AccessToken,
             token.ExpiresAt,

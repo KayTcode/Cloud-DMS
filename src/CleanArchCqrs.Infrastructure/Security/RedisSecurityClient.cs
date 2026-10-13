@@ -12,6 +12,10 @@ public sealed class RedisSecurityClient : ISecurityRedis, IDisposable
     private static readonly IReadOnlyDictionary<string, string> ScriptResources =
         new Dictionary<string, string>(StringComparer.Ordinal)
         {
+            ["begin-bootstrap"] = "CleanArchCqrs.Infrastructure.Security.Scripts.begin-bootstrap.lua",
+            ["finish-bootstrap"] = "CleanArchCqrs.Infrastructure.Security.Scripts.finish-bootstrap.lua",
+            ["abort-bootstrap"] = "CleanArchCqrs.Infrastructure.Security.Scripts.abort-bootstrap.lua",
+            ["block-session"] = "CleanArchCqrs.Infrastructure.Security.Scripts.block-session.lua",
             ["set-readiness"] = "CleanArchCqrs.Infrastructure.Security.Scripts.set-readiness.lua",
             ["get-readiness"] = "CleanArchCqrs.Infrastructure.Security.Scripts.get-readiness.lua",
             ["evaluate-access"] = "CleanArchCqrs.Infrastructure.Security.Scripts.evaluate-access.lua",

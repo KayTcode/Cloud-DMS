@@ -1,4 +1,4 @@
-﻿using CleanArchCqrs.Domain.Entities;
+using CleanArchCqrs.Domain.Entities;
 using System;
 using System.Collections;
 using System.Collections.Generic;
@@ -10,7 +10,7 @@ namespace CleanArchCqrs.Application.Common.Interfaces
 {
     public interface IJwtTokenService
     {
-        JwtTokenResult GenerateAccessToken(User user, string role, IEnumerable<string> permissions);
+        JwtTokenResult GenerateAccessToken(User user, string role, IEnumerable<string> permissions, Guid? sessionId = null);
     }
     public sealed record JwtTokenResult(
     string AccessToken,

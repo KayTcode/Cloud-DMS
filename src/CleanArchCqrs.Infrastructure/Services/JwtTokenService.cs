@@ -17,14 +17,17 @@ namespace CleanArchCqrs.Infrastructure.Services
         {
             _options = options.Value;
         }
-        public JwtTokenResult GenerateAccessToken(User user, string role, IEnumerable<string> permissions)
+        public JwtTokenResult GenerateAccessToken(User user, string role, IEnumerable<string> permissions, Guid? sessionId = null)
         {
+            if (!sessionId.HasValue || sessionId == Guid.Empty)
+                throw new ArgumentException("A persisted authorization session is required.", nameof(sessionId));
             var expiresAt =
             DateTime.UtcNow.AddMinutes(
                 _options.ExpirationMinutes);
 
             var claims = new List<Claim>
             {
+                new("sid", sessionId.Value.ToString()),
                 new(JwtRegisteredClaimNames.Sub, user.Id.ToString()),
                 new(ClaimTypes.NameIdentifier, user.Id.ToString()),
                 new("id", user.Id.ToString()),

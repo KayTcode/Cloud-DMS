@@ -37,17 +37,19 @@ public class AcceptInvitationCommandHandler : IRequestHandler<AcceptInvitationCo
     private readonly IApplicationDbContext _context;
     private readonly IPasswordHasher _passwordHasher;
     private readonly IJwtTokenService _jwtTokenService;
+    private readonly IAuthSessionService _sessions;
     private readonly IUserAuthorizationRepository _userAuthorizationRepository;
 
     public AcceptInvitationCommandHandler(
         IApplicationDbContext context,
         IPasswordHasher passwordHasher,
         IJwtTokenService jwtTokenService,
-        IUserAuthorizationRepository userAuthorizationRepository)
+        IUserAuthorizationRepository userAuthorizationRepository, IAuthSessionService sessions)
     {
         _context = context;
         _passwordHasher = passwordHasher;
         _jwtTokenService = jwtTokenService;
+        _sessions = sessions;
         _userAuthorizationRepository = userAuthorizationRepository;
     }
 
@@ -113,10 +115,13 @@ public class AcceptInvitationCommandHandler : IRequestHandler<AcceptInvitationCo
         var role = await _userAuthorizationRepository.GetRoleAsync(user.Id, cancellationToken) ?? "TenantAdmin";
         var permissions = await _userAuthorizationRepository.GetPermissionsAsync(user.Id, cancellationToken);
 
-        var token = _jwtTokenService.GenerateAccessToken(user, role, permissions);
-
         var refreshToken = Guid.NewGuid().ToString("N");
         var refreshTokenExpiresAt = DateTime.UtcNow.AddDays(7);
+        var sessionId = Guid.NewGuid();
+        var hash = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(refreshToken)));
+        await _context.RefreshTokens.AddAsync(new CleanArchCqrs.Domain.Entities.RefreshToken(sessionId, user.Id, hash, refreshTokenExpiresAt, null), cancellationToken);
+        await _context.SaveChangesAsync(cancellationToken);
+        var token = await _sessions.IssueAsync(user, role, permissions, sessionId, cancellationToken);
 
         return new LoginResponseDto(
             token.AccessToken,
