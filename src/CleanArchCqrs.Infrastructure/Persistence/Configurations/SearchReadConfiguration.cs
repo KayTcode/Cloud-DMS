@@ -53,6 +53,7 @@ public sealed class SearchReadConfiguration :
             .HasPrincipalKey(x => new { x.TenantId, x.Id }).OnDelete(DeleteBehavior.Restrict);
         b.HasIndex(x => new { x.GenerationId, x.Ordinal }).IsUnique();
         b.Property(x => x.Text).HasColumnType("longtext").IsRequired();
+        b.HasIndex(x => x.Text).IsFullText();
         b.Property(x => x.Location).HasMaxLength(500);
     }
     public void Configure(EntityTypeBuilder<FilePreviewArtifact> b)

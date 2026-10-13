@@ -86,6 +86,8 @@ public class FileEntryConfiguration : IEntityTypeConfiguration<FileEntry>
             .OnDelete(DeleteBehavior.SetNull);
 
         builder.HasIndex(f => f.TenantId);
+        builder.HasIndex(f => new { f.TenantId, f.Lifecycle, f.IsDeleted, f.FolderId });
+        builder.HasIndex(f => f.Name).IsFullText();
         builder.HasIndex(f => f.OwnerId);
         builder.HasIndex(f => f.FolderId);
         builder.HasIndex(f => f.OwningDepartmentId);

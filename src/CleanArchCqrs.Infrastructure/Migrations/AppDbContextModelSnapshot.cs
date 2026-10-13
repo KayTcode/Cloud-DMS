@@ -550,6 +550,9 @@ namespace CleanArchCqrs.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("FolderId");
 
+                    b.HasIndex("Name")
+                        .HasAnnotation("MySql:FullTextIndex", true);
+
                     b.HasIndex("OwnerId");
 
                     b.HasIndex("OwningDepartmentId");
@@ -560,6 +563,8 @@ namespace CleanArchCqrs.Infrastructure.Persistence.Migrations
                     b.HasIndex("StorageProviderId");
 
                     b.HasIndex("TenantId");
+
+                    b.HasIndex("TenantId", "Lifecycle", "IsDeleted", "FolderId");
 
                     b.HasIndex("TenantId", "Id", "ActiveSearchGenerationId");
 
@@ -769,6 +774,9 @@ namespace CleanArchCqrs.Infrastructure.Persistence.Migrations
                         .IsUnique();
 
                     b.HasIndex("TenantId", "GenerationId");
+
+                    b.HasIndex("Text")
+                        .HasAnnotation("MySql:FullTextIndex", true);
 
                     b.ToTable("FileTextChunks");
                 });

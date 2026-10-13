@@ -6,6 +6,7 @@ using CleanArchCqrs.Infrastructure.Repositories;
 using CleanArchCqrs.Infrastructure.Services;
 using CleanArchCqrs.Infrastructure.Services.Auth;
 using CleanArchCqrs.Infrastructure.Security;
+using CleanArchCqrs.Infrastructure.Search;
 using CleanArchCqrs.Infrastructure.Workers;
 using CleanArchCqrs.Application.Common.Authorization;
 using Microsoft.EntityFrameworkCore;
@@ -53,6 +54,7 @@ namespace CleanArchCqrs.Infrastructure.DependencyInjection
             services.AddScoped<IFileAccessContextResolver, FileAccessContextResolver>();
             services.AddScoped<IFileAclQuery, FileAclQuery>();
             services.AddScoped<IFileAccessService, FileAccessService>();
+            services.AddScoped<IKeywordSearchService, MySqlKeywordSearchService>();
             var readTtlSeconds = configuration.GetValue<int?>("ReadAccess:UrlTtlSeconds") ?? 120;
             if (readTtlSeconds is < 1 or > 600)
                 throw new InvalidOperationException("ReadAccess:UrlTtlSeconds must be between 1 and 600.");
