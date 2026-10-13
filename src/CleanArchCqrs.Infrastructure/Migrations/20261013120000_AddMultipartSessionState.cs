@@ -39,6 +39,10 @@ public sealed class AddMultipartSessionState : Migration
             "LegacyUploadIntents", "ProviderId");
         migrationBuilder.AddColumn<long>("StagingUsedBytes", "StorageProviders",
             type: "bigint", nullable: false, defaultValue: 0L);
+        migrationBuilder.AddColumn<long>("RetainedStagingBytes", "FileContentVersions",
+            type: "bigint", nullable: false, defaultValue: 0L);
+        migrationBuilder.AddColumn<DateTimeOffset?>("PhysicalStorageDeletedAt", "FileContentVersions",
+            type: "datetime(6)", nullable: true);
         migrationBuilder.AddColumn<string>("MultipartUploadId", "FileUploadSessions",
             type: "varchar(500)", maxLength: 500, nullable: false, defaultValue: "");
         migrationBuilder.AddColumn<string>("FileName", "FileUploadSessions",
@@ -77,6 +81,8 @@ public sealed class AddMultipartSessionState : Migration
     {
         migrationBuilder.DropTable("LegacyUploadIntents");
         migrationBuilder.DropColumn("StagingUsedBytes", "StorageProviders");
+        migrationBuilder.DropColumn("RetainedStagingBytes", "FileContentVersions");
+        migrationBuilder.DropColumn("PhysicalStorageDeletedAt", "FileContentVersions");
         migrationBuilder.DropColumn("MultipartUploadId", "FileUploadSessions");
         migrationBuilder.DropColumn("FileName", "FileUploadSessions");
         migrationBuilder.DropColumn("ContentType", "FileUploadSessions");

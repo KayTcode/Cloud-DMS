@@ -36,9 +36,8 @@ public sealed class MultipartUploadRecoveryWorker(IServiceScopeFactory scopes,
                 && (s.Status == FileUploadStatus.Pending && s.ExpiresAt <= now
                     || s.Status == FileUploadStatus.Completing && s.CompletionLeaseExpiresAt <= now
                     || (s.Status == FileUploadStatus.Failed || s.Status == FileUploadStatus.Expired)
-                    && (s.StorageCleanedAt == null
-                        || s.CompletionManifestHash != null && s.ExpiresAt > now.AddDays(-2))))
-            .OrderBy(s => s.StorageCleanedAt).Take(50).ToArrayAsync(ct);
+                    && (s.StorageCleanedAt == null || s.StorageCleanedAt <= now.AddMinutes(-5))))
+            .OrderBy(s => s.StorageCleanedAt).ThenBy(s => s.Id).Take(50).ToArrayAsync(ct);
         foreach (var session in sessions)
         {
             try
@@ -75,6 +74,9 @@ public sealed class MultipartUploadRecoveryWorker(IServiceScopeFactory scopes,
             catch (Exception ex)
             {
                 logger.LogWarning(ex, "Multipart upload cleanup will be retried for session {SessionId}.", session.Id);
+                await db.FileUploadSessions.IgnoreQueryFilters().Where(s => s.Id == session.Id
+                        && (s.Status == FileUploadStatus.Failed || s.Status == FileUploadStatus.Expired))
+                    .ExecuteUpdateAsync(s => s.SetProperty(x => x.StorageCleanedAt, DateTimeOffset.UtcNow), ct);
             }
         }
 
@@ -112,8 +114,9 @@ public sealed class MultipartUploadRecoveryWorker(IServiceScopeFactory scopes,
     {
         var intents = await db.LegacyUploadIntents.IgnoreQueryFilters().AsNoTracking()
             .Where(i => i.Status == "Pending" && i.ExpiresAt <= now
-                || i.Status == "Abandoned" && i.ExpiresAt > now.AddDays(-2))
-            .OrderBy(i => i.StorageCleanedAt).Take(50).ToArrayAsync(ct);
+                || i.Status == "Abandoned" && (i.StorageCleanedAt == null
+                    || i.StorageCleanedAt <= now.AddMinutes(-5)))
+            .OrderBy(i => i.StorageCleanedAt).ThenBy(i => i.Id).Take(50).ToArrayAsync(ct);
         foreach (var intent in intents)
         {
             try
@@ -150,6 +153,9 @@ public sealed class MultipartUploadRecoveryWorker(IServiceScopeFactory scopes,
             catch (Exception ex)
             {
                 logger.LogWarning(ex, "Legacy upload cleanup will be retried for intent {IntentId}.", intent.Id);
+                await db.LegacyUploadIntents.IgnoreQueryFilters().Where(i => i.Id == intent.Id
+                        && i.Status == "Abandoned")
+                    .ExecuteUpdateAsync(s => s.SetProperty(i => i.StorageCleanedAt, DateTimeOffset.UtcNow), ct);
             }
         }
     }

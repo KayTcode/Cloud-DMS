@@ -106,11 +106,21 @@ public sealed class S3StorageService : IStorageService, IMultipartObjectStorage,
         await _client.CompleteMultipartUploadAsync(request, cancellationToken);
     }
 
-    public async Task AbortAsync(string key, string uploadId, CancellationToken cancellationToken) =>
-        await _client.AbortMultipartUploadAsync(new AbortMultipartUploadRequest
+    public async Task AbortAsync(string key, string uploadId, CancellationToken cancellationToken)
+    {
+        try
         {
-            BucketName = _settings.Bucket, Key = key, UploadId = uploadId
-        }, cancellationToken);
+            await _client.AbortMultipartUploadAsync(new AbortMultipartUploadRequest
+            {
+                BucketName = _settings.Bucket, Key = key, UploadId = uploadId
+            }, cancellationToken);
+        }
+        catch (AmazonS3Exception ex) when (ex.ErrorCode == "NoSuchUpload"
+            || ex.StatusCode == System.Net.HttpStatusCode.NotFound)
+        {
+            // Another abort or a completed upload already removed the multipart handle.
+        }
+    }
 
     public async Task<MultipartObjectInfo?> InspectAsync(string key, CancellationToken cancellationToken)
     {

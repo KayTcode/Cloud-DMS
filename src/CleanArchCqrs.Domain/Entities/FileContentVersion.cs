@@ -13,5 +13,7 @@ public class FileContentVersion : BaseEntity
     public Guid ProviderId { get; set; }
     public string ContentType { get; set; } = string.Empty;
     public long SizeBytes { get; set; }
+    public long RetainedStagingBytes { get; set; }
+    public DateTimeOffset? PhysicalStorageDeletedAt { get; set; }
     public FileScanStatus ScanStatus { get; set; } = FileScanStatus.Pending;
 }

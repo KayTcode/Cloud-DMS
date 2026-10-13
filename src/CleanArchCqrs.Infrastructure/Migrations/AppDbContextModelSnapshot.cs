@@ -418,6 +418,9 @@ namespace CleanArchCqrs.Infrastructure.Persistence.Migrations
                         .HasMaxLength(500)
                         .HasColumnType("varchar(500)");
 
+                    b.Property<DateTimeOffset?>("PhysicalStorageDeletedAt")
+                        .HasColumnType("datetime(6)");
+
                     b.Property<Guid>("ProviderId")
                         .HasColumnType("char(36)");
 
@@ -425,6 +428,9 @@ namespace CleanArchCqrs.Infrastructure.Persistence.Migrations
                         .IsRequired()
                         .HasMaxLength(32)
                         .HasColumnType("varchar(32)");
+
+                    b.Property<long>("RetainedStagingBytes")
+                        .HasColumnType("bigint");
 
                     b.Property<long>("SizeBytes")
                         .HasColumnType("bigint");

@@ -26,6 +26,39 @@ public sealed class UploadQuota(IApplicationDbContext db)
                 p => p.StagingUsedBytes >= bytes ? p.StagingUsedBytes - bytes : 0), ct);
     }
 
+    public async Task AdjustStagingAsync(Guid providerId, long delta, long limit, CancellationToken ct)
+    {
+        if (delta > 0)
+        {
+            if (limit < delta || await db.StorageProviders.IgnoreQueryFilters()
+                .Where(p => p.Id == providerId && p.StagingUsedBytes <= limit - delta)
+                .ExecuteUpdateAsync(s => s.SetProperty(p => p.StagingUsedBytes,
+                    p => p.StagingUsedBytes + delta), ct) != 1)
+                throw new UploadQuotaExceededException("Temporary storage limit exceeded.");
+        }
+        else if (delta < 0)
+            await ReleaseStagingAsync(providerId, checked(-delta), ct);
+    }
+
+    // Call in a SQL transaction after deleting the immutable object; the CAS and
+    // provider counter release then commit together, so retries cannot double-refund.
+    public async Task<bool> RecordPhysicalCleanupAsync(Guid contentVersionId, CancellationToken ct)
+    {
+        var version = await db.FileContentVersions.IgnoreQueryFilters().AsNoTracking()
+            .SingleOrDefaultAsync(v => v.Id == contentVersionId, ct);
+        if (version is null || version.RetainedStagingBytes <= 0) return false;
+        var updated = await db.FileContentVersions.IgnoreQueryFilters()
+            .Where(v => v.Id == contentVersionId && v.ProviderId == version.ProviderId
+                && v.RetainedStagingBytes == version.RetainedStagingBytes
+                && v.PhysicalStorageDeletedAt == null)
+            .ExecuteUpdateAsync(s => s
+                .SetProperty(v => v.RetainedStagingBytes, 0L)
+                .SetProperty(v => v.PhysicalStorageDeletedAt, DateTimeOffset.UtcNow), ct);
+        if (updated != 1) return false;
+        await ReleaseStagingAsync(version.ProviderId, version.RetainedStagingBytes, ct);
+        return true;
+    }
+
     public async Task ReserveAsync(Guid tenantId, Guid? departmentId, Guid userId,
         Guid providerId, long bytes, CancellationToken ct, long? providerBytes = null)
     {
