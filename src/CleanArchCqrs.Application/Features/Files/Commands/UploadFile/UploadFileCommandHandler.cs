@@ -149,7 +149,7 @@ public class UploadFileCommandHandler : IRequestHandler<UploadFileCommand, Resul
         _logger.LogInformation("Scanning file {FileName} ({SizeBytes} bytes) with ClamAV...", request.FileName, request.FileSize);
         var scanResult = await _virusScannerService.ScanStreamAsync(request.FileStream, cancellationToken);
 
-        if (scanResult.IsInfected)
+        if (!scanResult.ScanSucceeded || scanResult.IsInfected)
         {
             _logger.LogWarning("Malware detected in upload: {ThreatName}", scanResult.ThreatName);
 

@@ -55,6 +55,20 @@ namespace CleanArchCqrs.Infrastructure.DependencyInjection
             services.AddScoped<IFileAclQuery, FileAclQuery>();
             services.AddScoped<IFileAccessService, FileAccessService>();
             services.AddScoped<IKeywordSearchService, MySqlKeywordSearchService>();
+            services.AddOptions<DocumentIndexOptions>().Bind(configuration.GetSection("SearchIndex"))
+                .Validate(o => o.MaxScanBytes > 0 && o.MaxScanBytes < 2L * 1024 * 1024 * 1024
+                    && o.ScanTimeoutSeconds is >= 1 and <= 86400 && o.RetentionMinutes >= 10
+                    && Uri.TryCreate(o.TokenizerEndpoint, UriKind.Absolute, out var endpoint)
+                    && endpoint.Scheme is "http" or "https" && string.IsNullOrEmpty(endpoint.UserInfo)
+                    && !string.IsNullOrWhiteSpace(o.ModelVersion) && o.ModelVersion.Length <= 128,
+                    "Invalid SearchIndex limits or internal tokenizer endpoint.").ValidateOnStart();
+            services.AddScoped<IFileTextExtractor, CleanArchCqrs.Infrastructure.Search.Extraction.FileTextExtractor>();
+            services.AddScoped<ITextChunker>(sp => new HttpTextChunker(new HttpClient { Timeout = TimeSpan.FromSeconds(120) },
+                sp.GetRequiredService<IOptions<DocumentIndexOptions>>()));
+            services.AddScoped<IDocumentIndexSink, UnavailableDocumentIndexSink>();
+            services.AddScoped<DocumentIndexProcessor>();
+            services.AddHostedService<DocumentIndexWorker>();
+            services.AddHostedService<DocumentReconciliationWorker>();
             var readTtlSeconds = configuration.GetValue<int?>("ReadAccess:UrlTtlSeconds") ?? 120;
             if (readTtlSeconds is < 1 or > 600)
                 throw new InvalidOperationException("ReadAccess:UrlTtlSeconds must be between 1 and 600.");
