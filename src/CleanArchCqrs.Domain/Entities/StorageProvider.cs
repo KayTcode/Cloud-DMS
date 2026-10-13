@@ -6,7 +6,8 @@ public enum StorageProviderType
 {
     Local = 0,
     GoogleDrive = 1,
-    OneDrive = 2
+    OneDrive = 2,
+    S3 = 3
 }
 
 public class StorageProvider : BaseEntity

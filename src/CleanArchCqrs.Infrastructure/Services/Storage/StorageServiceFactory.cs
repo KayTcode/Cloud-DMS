@@ -33,6 +33,7 @@ public class StorageServiceFactory : IStorageServiceFactory
             StorageProviderType.GoogleDrive => new GoogleDriveStorageService(rawConfigJson),
             StorageProviderType.OneDrive => new OneDriveStorageService(rawConfigJson),
             StorageProviderType.Local => new LocalStorageService(_localBasePath),
+            StorageProviderType.S3 => new S3StorageService(rawConfigJson),
             _ => throw new NotSupportedException($"Storage Provider Type {type} is not supported.")
         };
     }

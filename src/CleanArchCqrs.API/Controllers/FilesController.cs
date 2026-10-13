@@ -5,6 +5,7 @@ using CleanArchCqrs.Application.Features.Files.Commands.RestoreFile;
 using CleanArchCqrs.Application.Features.Files.Commands.UploadFile;
 using CleanArchCqrs.Application.Features.Files.DTOs;
 using CleanArchCqrs.Application.Features.Files.Queries.DownloadFile;
+using CleanArchCqrs.Application.Features.Files.Queries.GetFileReadAccess;
 using CleanArchCqrs.Application.Features.Files.Queries.GetTenantFiles;
 using CleanArchCqrs.Application.Features.Files.Queries.GetTrashFiles;
 using Microsoft.AspNetCore.Authorization;
@@ -149,6 +150,17 @@ public class FilesController : ApiControllerBase
         }
 
         return File(result.Value.Stream, result.Value.ContentType, result.Value.FileName);
+    }
+
+    [Authorize(Policy = "file.read")]
+    [HttpGet("{id:guid}/read-access")]
+    public async Task<ActionResult> GetReadAccess([FromRoute] Guid id,
+        [FromQuery] string purpose = "download", CancellationToken cancellationToken = default)
+    {
+        Response.Headers.CacheControl = "no-store";
+        var apiOrigin = new Uri($"{Request.Scheme}://{Request.Host}");
+        var result = await Sender.Send(new GetFileReadAccessQuery(id, purpose, apiOrigin), cancellationToken);
+        return HandleResult(result);
     }
 
     /// <summary>

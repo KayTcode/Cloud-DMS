@@ -53,6 +53,11 @@ namespace CleanArchCqrs.Infrastructure.DependencyInjection
             services.AddScoped<IFileAccessContextResolver, FileAccessContextResolver>();
             services.AddScoped<IFileAclQuery, FileAclQuery>();
             services.AddScoped<IFileAccessService, FileAccessService>();
+            var readTtlSeconds = configuration.GetValue<int?>("ReadAccess:UrlTtlSeconds") ?? 120;
+            if (readTtlSeconds is < 1 or > 600)
+                throw new InvalidOperationException("ReadAccess:UrlTtlSeconds must be between 1 and 600.");
+            services.AddSingleton(new CleanArchCqrs.Application.Features.Files.Queries.GetFileReadAccess.ReadAccessOptions(
+                TimeSpan.FromSeconds(readTtlSeconds)));
             services.AddScoped<IQuotaReleaseWriter, MySqlQuotaReleaseWriter>();
             services.AddScoped<CleanArchCqrs.Application.Features.Files.Commands.ManageAccess.FileMutationService>();
             services.AddScoped<IGoogleAuthService>(provider =>
@@ -71,6 +76,7 @@ namespace CleanArchCqrs.Infrastructure.DependencyInjection
             // Storage & Security
             services.AddSingleton<IAesEncryptionService, AesEncryptionService>();
             services.AddScoped<IStorageServiceFactory, CleanArchCqrs.Infrastructure.Services.Storage.StorageServiceFactory>();
+            services.AddScoped<IObjectReadUrlService, CleanArchCqrs.Infrastructure.Services.Storage.ObjectReadUrlService>();
             services.AddScoped<IVirusScannerService, ClamAvVirusScannerService>();
 
             // Database

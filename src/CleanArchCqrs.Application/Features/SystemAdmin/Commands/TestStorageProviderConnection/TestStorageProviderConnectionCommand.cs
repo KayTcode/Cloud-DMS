@@ -33,15 +33,18 @@ public class TestStorageProviderConnectionCommandHandler : IRequestHandler<TestS
         {
             var sw = System.Diagnostics.Stopwatch.StartNew();
             var adapter = _storageServiceFactory.CreateServiceFromRawConfig(request.Type, request.ConfigJson);
+            using var adapterLease = adapter as IDisposable;
             var quota = await adapter.GetProviderQuotaAsync(cancellationToken);
             sw.Stop();
 
             return new TestConnectionResult(
                 Success: true,
-                Message: $"Kết nối {request.Type} thành công!",
+                Message: request.Type == StorageProviderType.S3
+                    ? "Kết nối S3 thành công; dung lượng là hạn mức cấu hình, số byte đã dùng lấy từ DB."
+                    : $"Kết nối {request.Type} thành công!",
                 TotalCapacityBytes: quota.TotalCapacityBytes,
-                UsedCapacityBytes: quota.UsedCapacityBytes,
-                AvailableCapacityBytes: quota.AvailableCapacityBytes,
+                UsedCapacityBytes: request.Type == StorageProviderType.S3 ? 0 : quota.UsedCapacityBytes,
+                AvailableCapacityBytes: request.Type == StorageProviderType.S3 ? 0 : quota.AvailableCapacityBytes,
                 LatencyMs: sw.ElapsedMilliseconds
             );
         }

@@ -31,6 +31,7 @@ public class ConnectStorageProviderCommandHandler : IRequestHandler<ConnectStora
     {
         // 1. Tạo adapter tạm thời để test kết nối và lấy quota thực
         var adapter = _storageServiceFactory.CreateServiceFromRawConfig(request.Type, request.ConfigJson);
+        using var adapterLease = adapter as IDisposable;
         var quota = await adapter.GetProviderQuotaAsync(cancellationToken);
 
         // 2. Tạo thư mục gốc /CloudDMS_Root trên Cloud
