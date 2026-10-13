@@ -156,6 +156,7 @@ public sealed class FileMutationService(
                 await TeamMemberAsync(context, command, token);
             else
                 await ResourceGrantAsync(context, command, token);
+            await EmitPermissionEventsAsync(context, command, request.IdempotencyKey, token);
             Audit(context, command.Kind.ToString(), command.ResourceId);
         }, ct);
     }
@@ -342,6 +343,39 @@ public sealed class FileMutationService(
                 && s.SharedWithUserId == command.PrincipalId).ToArrayAsync(ct);
             db.FileShares.RemoveRange(legacy);
         }
+    }
+
+    private async Task EmitPermissionEventsAsync(FileAccessContext context,
+        ManageAccessCommand command, string idempotencyKey, CancellationToken ct)
+    {
+        IQueryable<FileEntry> files = db.FileEntries.IgnoreQueryFilters()
+            .Where(f => f.TenantId == context.TenantId && !f.IsDeleted);
+        if (command.Kind is AccessMutationKind.UpsertFileGrant or AccessMutationKind.RevokeFileGrant)
+            files = files.Where(f => f.Id == command.ResourceId);
+        else if (command.Kind is not (AccessMutationKind.AddTeamMember or AccessMutationKind.RemoveTeamMember))
+        {
+            var folders = await db.Folders.IgnoreQueryFilters().AsNoTracking()
+                .Where(f => f.TenantId == context.TenantId)
+                .Select(f => new { f.Id, f.ParentFolderId }).ToArrayAsync(ct);
+            var affected = new HashSet<Guid> { command.ResourceId };
+            var changed = true;
+            while (changed)
+            {
+                changed = false;
+                foreach (var folder in folders)
+                    if (folder.ParentFolderId.HasValue && affected.Contains(folder.ParentFolderId.Value))
+                        changed |= affected.Add(folder.Id);
+            }
+            files = files.Where(f => f.FolderId.HasValue && affected.Contains(f.FolderId.Value));
+        }
+        var rows = await files.Select(f => new { f.Id, f.DocumentVersion }).ToArrayAsync(ct);
+        foreach (var row in rows)
+            db.DocumentOutboxMessages.Add(new DocumentOutboxMessage
+            {
+                TenantId = context.TenantId, FileId = row.Id,
+                DocumentVersion = row.DocumentVersion, EventType = "DocumentPermissionsChanged",
+                IdempotencyKey = $"{idempotencyKey}:{row.Id:N}", Payload = "{}"
+            });
     }
 
     private static MutationRequest CreateRequest(FileAccessContext context, string key, object payload)

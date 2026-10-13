@@ -69,6 +69,10 @@ namespace CleanArchCqrs.Infrastructure.DependencyInjection
             services.AddSingleton(new CleanArchCqrs.Application.Features.Files.Queries.GetFileReadAccess.ReadAccessOptions(
                 TimeSpan.FromSeconds(readTtlSeconds), publicOrigin));
             services.AddScoped<IQuotaReleaseWriter, MySqlQuotaReleaseWriter>();
+            services.AddScoped<CleanArchCqrs.Application.Features.Files.Commands.UploadFile.UploadAuthorization>();
+            services.AddScoped<CleanArchCqrs.Application.Features.Files.Commands.UploadFile.UploadQuota>();
+            services.AddScoped<CleanArchCqrs.Application.Features.Files.Commands.BeginMultipartUpload.MultipartUploadService>();
+            services.AddHostedService<MultipartUploadRecoveryWorker>();
             services.AddScoped<CleanArchCqrs.Application.Features.Files.Commands.ManageAccess.FileMutationService>();
             services.AddScoped<IGoogleAuthService>(provider =>
                 new GoogleAuthService(

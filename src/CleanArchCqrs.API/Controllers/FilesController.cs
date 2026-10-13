@@ -3,6 +3,8 @@ using CleanArchCqrs.Application.Features.Files.Commands.DeleteFile;
 using CleanArchCqrs.Application.Features.Files.Commands.PermanentDeleteFile;
 using CleanArchCqrs.Application.Features.Files.Commands.RestoreFile;
 using CleanArchCqrs.Application.Features.Files.Commands.UploadFile;
+using CleanArchCqrs.Application.Features.Files.Commands.BeginMultipartUpload;
+using CleanArchCqrs.Application.Common.Interfaces;
 using CleanArchCqrs.Application.Features.Files.DTOs;
 using CleanArchCqrs.Application.Features.Files.Queries.DownloadFile;
 using CleanArchCqrs.Application.Features.Files.Queries.GetFileReadAccess;
@@ -27,7 +29,7 @@ public class FilesController : ApiControllerBase
     /// <summary>
     /// Uploads a single file or multiple files with Quota validation, Virus scan, Hash calculation, and Multi-Cloud routing.
     /// </summary>
-    [Authorize(Policy = "file.upload")]
+    [Authorize]
     [EnableRateLimiting("upload")]
     [HttpPost("upload")]
     [RequestSizeLimit(100 * 1024 * 1024)] // 100 MB
@@ -105,6 +107,46 @@ public class FilesController : ApiControllerBase
         }
 
         return Ok(Result<MultipleFileUploadResultDto>.Success(response));
+    }
+
+    public sealed record BeginMultipartRequest(string FileName, long SizeBytes, Guid? FolderId,
+        Guid? ReplaceFileId);
+    public sealed record CompleteMultipartRequest(IReadOnlyList<MultipartPart> Parts);
+
+    [Authorize]
+    [HttpPost("upload-sessions")]
+    public async Task<ActionResult<MultipartUploadSessionDto>> BeginMultipart(
+        [FromBody] BeginMultipartRequest request,
+        [FromHeader(Name = "Idempotency-Key")] string idempotencyKey,
+        CancellationToken cancellationToken)
+    {
+        var result = await Sender.Send(new BeginMultipartUploadCommand(request.FileName,
+            request.SizeBytes, request.FolderId, request.ReplaceFileId, idempotencyKey), cancellationToken);
+        return Ok(result);
+    }
+
+    [Authorize]
+    [HttpPost("upload-sessions/{id:guid}/parts/{number:int}/url")]
+    public async Task<ActionResult<MultipartPartUrlDto>> PresignPart(Guid id, int number,
+        CancellationToken cancellationToken)
+    {
+        Response.Headers.CacheControl = "no-store";
+        return Ok(await Sender.Send(new PresignMultipartPartCommand(id, number), cancellationToken));
+    }
+
+    [Authorize]
+    [HttpPost("upload-sessions/{id:guid}/complete")]
+    public async Task<ActionResult<MultipartCompletionDto>> CompleteMultipart(Guid id,
+        [FromBody] CompleteMultipartRequest request, CancellationToken cancellationToken)
+    {
+        return Accepted(await Sender.Send(new CompleteMultipartUploadCommand(id, request.Parts), cancellationToken));
+    }
+
+    [Authorize]
+    [HttpDelete("upload-sessions/{id:guid}")]
+    public async Task<ActionResult> AbortMultipart(Guid id, CancellationToken cancellationToken)
+    {
+        return Ok(await Sender.Send(new AbortMultipartUploadCommand(id), cancellationToken));
     }
 
     /// <summary>

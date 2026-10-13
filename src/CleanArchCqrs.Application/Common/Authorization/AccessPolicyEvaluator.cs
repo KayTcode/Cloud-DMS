@@ -57,6 +57,8 @@ public sealed class AccessPolicyEvaluator
 
         var allowed = action switch
         {
+            PermissionNames.FileUpload => resource is { Lifecycle: FileLifecycle.Active }
+                && resource.Id == input.User!.TenantId && HasPermission(input.User, action),
             PermissionNames.FileRead => CanAccessContent(input, resource, action, owner || grants.Any(grant => grant.CanRead)),
             PermissionNames.FileUpdate => CanAccessContent(input, resource, action, owner || grants.Any(grant => grant.CanWrite)),
             PermissionNames.FileDelete => CanAccessContent(input, resource, action, owner || grants.Any(grant => grant.CanDelete)),

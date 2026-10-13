@@ -776,6 +776,18 @@ namespace CleanArchCqrs.Infrastructure.Persistence.Migrations
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("datetime(6)");
 
+                    b.Property<string>("ContentType")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("varchar(255)");
+
+                    b.Property<string>("CompletionManifestHash")
+                        .HasMaxLength(64)
+                        .HasColumnType("varchar(64)");
+
+                    b.Property<Guid?>("DepartmentId")
+                        .HasColumnType("char(36)");
+
                     b.Property<long>("DocumentVersion")
                         .HasColumnType("bigint");
 
@@ -783,6 +795,14 @@ namespace CleanArchCqrs.Infrastructure.Persistence.Migrations
                         .HasColumnType("datetime(6)");
 
                     b.Property<Guid>("FileId")
+                        .HasColumnType("char(36)");
+
+                    b.Property<string>("FileName")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("varchar(255)");
+
+                    b.Property<Guid?>("FolderId")
                         .HasColumnType("char(36)");
 
                     b.Property<string>("IdempotencyKey")
@@ -795,8 +815,24 @@ namespace CleanArchCqrs.Infrastructure.Persistence.Migrations
                         .HasMaxLength(500)
                         .HasColumnType("varchar(500)");
 
+                    b.Property<string>("MultipartUploadId")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("varchar(500)");
+
+                    b.Property<long?>("PreviousDocumentVersion")
+                        .HasColumnType("bigint");
+
                     b.Property<Guid>("ProviderId")
                         .HasColumnType("char(36)");
+
+                    b.Property<Guid>("QuotaUserId")
+                        .HasColumnType("char(36)");
+
+                    b.Property<string>("RequestHash")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("varchar(64)");
 
                     b.Property<long>("ReservedBytes")
                         .HasColumnType("bigint");
@@ -805,6 +841,9 @@ namespace CleanArchCqrs.Infrastructure.Persistence.Migrations
                         .IsRequired()
                         .HasMaxLength(32)
                         .HasColumnType("varchar(32)");
+
+                    b.Property<DateTimeOffset?>("StorageCleanedAt")
+                        .HasColumnType("datetime(6)");
 
                     b.Property<Guid>("TenantId")
                         .HasColumnType("char(36)");

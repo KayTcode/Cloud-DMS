@@ -8,7 +8,7 @@ using CleanArchCqrs.Application.Common.Interfaces;
 namespace CleanArchCqrs.Infrastructure.Services.Storage;
 
 // Provider configuration is encrypted by the existing storage-provider flow.
-public sealed class S3StorageService : IStorageService, IDisposable
+public sealed class S3StorageService : IStorageService, IMultipartObjectStorage
 {
     private readonly AmazonS3Client _client;
     private readonly S3StorageSettings _settings;
@@ -52,6 +52,94 @@ public sealed class S3StorageService : IStorageService, IDisposable
             ContentType = contentType
         }, cancellationToken);
         return key;
+    }
+
+    public async Task<string> BeginAsync(string key, string contentType, CancellationToken cancellationToken)
+    {
+        var response = await _client.InitiateMultipartUploadAsync(new InitiateMultipartUploadRequest
+        {
+            BucketName = _settings.Bucket, Key = key, ContentType = contentType
+        }, cancellationToken);
+        return response.UploadId;
+    }
+
+    public async Task<Uri> PresignPartAsync(string key, string uploadId, int partNumber,
+        TimeSpan lifetime, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        var url = await _client.GetPreSignedURLAsync(new GetPreSignedUrlRequest
+        {
+            BucketName = _settings.Bucket, Key = key, Verb = HttpVerb.PUT,
+            UploadId = uploadId, PartNumber = partNumber,
+            Expires = DateTime.UtcNow.Add(lifetime)
+        });
+        return new Uri(url);
+    }
+
+    public async Task CompleteAsync(string key, string uploadId, IReadOnlyList<MultipartPart> parts,
+        CancellationToken cancellationToken)
+    {
+        var request = new CompleteMultipartUploadRequest
+        {
+            BucketName = _settings.Bucket, Key = key, UploadId = uploadId,
+            PartETags = parts.Select(p => new PartETag(p.Number, p.ETag)).ToList()
+        };
+        await _client.CompleteMultipartUploadAsync(request, cancellationToken);
+    }
+
+    public async Task AbortAsync(string key, string uploadId, CancellationToken cancellationToken) =>
+        await _client.AbortMultipartUploadAsync(new AbortMultipartUploadRequest
+        {
+            BucketName = _settings.Bucket, Key = key, UploadId = uploadId
+        }, cancellationToken);
+
+    public async Task<MultipartObjectInfo?> InspectAsync(string key, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var result = await _client.GetObjectMetadataAsync(_settings.Bucket, key, cancellationToken);
+            return new(result.ContentLength, result.Headers.ContentType ?? "application/octet-stream");
+        }
+        catch (AmazonS3Exception ex) when (ex.StatusCode == System.Net.HttpStatusCode.NotFound)
+        {
+            return null;
+        }
+    }
+
+    public async Task<IReadOnlyList<IncompleteMultipartUpload>> ListIncompleteAsync(
+        DateTimeOffset startedBefore, CancellationToken cancellationToken)
+    {
+        var result = new List<IncompleteMultipartUpload>();
+        string? keyMarker = null;
+        string? uploadIdMarker = null;
+        do
+        {
+            var response = await _client.ListMultipartUploadsAsync(new ListMultipartUploadsRequest
+            {
+                BucketName = _settings.Bucket, KeyMarker = keyMarker,
+                UploadIdMarker = uploadIdMarker, MaxUploads = 1000
+            }, cancellationToken);
+            result.AddRange(response.MultipartUploads
+                .Where(x => x.Initiated.HasValue
+                    && x.Initiated.Value.ToUniversalTime() < startedBefore.UtcDateTime
+                    && IsManagedMultipartKey(x.Key))
+                .Select(x => new IncompleteMultipartUpload(x.Key, x.UploadId,
+                    new DateTimeOffset(x.Initiated!.Value.ToUniversalTime()))));
+            if (response.IsTruncated != true) break;
+            keyMarker = response.NextKeyMarker;
+            uploadIdMarker = response.NextUploadIdMarker;
+        } while (!string.IsNullOrEmpty(keyMarker));
+        return result;
+    }
+
+    private static bool IsManagedMultipartKey(string key)
+    {
+        var parts = key.Split('/');
+        return parts.Length == 5 && parts[0] == "objects"
+            && Guid.TryParseExact(parts[1], "N", out _)
+            && Guid.TryParseExact(parts[2], "N", out _)
+            && long.TryParse(parts[3], out var version) && version > 0
+            && Guid.TryParseExact(parts[4], "N", out _);
     }
 
     public async Task<Stream> DownloadFileAsync(string storageKey, CancellationToken cancellationToken = default)

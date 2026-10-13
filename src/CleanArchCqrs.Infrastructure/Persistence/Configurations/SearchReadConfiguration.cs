@@ -85,6 +85,11 @@ public sealed class SearchReadConfiguration :
         b.HasIndex(x => new { x.Status, x.ExpiresAt });
         b.Property(x => x.IdempotencyKey).HasMaxLength(128).IsRequired();
         b.Property(x => x.ObjectKey).HasMaxLength(500).IsRequired();
+        b.Property(x => x.MultipartUploadId).HasMaxLength(500).IsRequired();
+        b.Property(x => x.FileName).HasMaxLength(255).IsRequired();
+        b.Property(x => x.ContentType).HasMaxLength(255).IsRequired();
+        b.Property(x => x.RequestHash).HasMaxLength(64).IsRequired();
+        b.Property(x => x.CompletionManifestHash).HasMaxLength(64);
         b.Property(x => x.Status).HasConversion<string>().HasMaxLength(32);
         b.HasOne<User>().WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Restrict);
         b.HasOne<StorageProvider>().WithMany().HasForeignKey(x => x.ProviderId).OnDelete(DeleteBehavior.Restrict);

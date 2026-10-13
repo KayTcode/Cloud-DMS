@@ -37,14 +37,8 @@ public class ClamAvVirusScannerService : IVirusScannerService
     {
         if (!_enabled)
         {
-            if (!_environment.IsDevelopment())
-            {
-                _logger.LogError("ClamAV scanning is disabled via configuration in Non-Development environment. Rejecting upload (Fail-Closed).");
-                return VirusScanResult.Infected("SCAN_DISABLED", "Dịch vụ quét mã độc đang bị tắt trên hệ thống máy chủ. Upload bị từ chối vì lý do an toàn bảo mật.");
-            }
-
-            _logger.LogDebug("ClamAV scanning is disabled via configuration in Development. Passing as clean.");
-            return VirusScanResult.Clean();
+            _logger.LogError("ClamAV scanning is disabled. Rejecting upload.");
+            return VirusScanResult.Infected("SCAN_DISABLED", "Dịch vụ quét mã độc đang bị tắt.");
         }
 
         long initialPosition = stream.CanSeek ? stream.Position : 0;
@@ -57,14 +51,8 @@ public class ClamAvVirusScannerService : IVirusScannerService
             // Connect timeout 3s
             if (await Task.WhenAny(connectTask, Task.Delay(3000, cancellationToken)) != connectTask)
             {
-                if (!_environment.IsDevelopment())
-                {
-                    _logger.LogError("ClamAV daemon at {Host}:{Port} connection timed out in Non-Development. Fail-closed enforced.", _host, _port);
-                    return VirusScanResult.Infected("SCAN_TIMEOUT", "Hệ thống quét virus phản hồi quá hạn (timeout). Tệp tin bị chặn để đảm bảo an toàn hệ thống.");
-                }
-
-                _logger.LogWarning("ClamAV daemon at {Host}:{Port} connection timed out in Development. Falling back to Safe Pass.", _host, _port);
-                return VirusScanResult.Clean();
+                _logger.LogError("ClamAV daemon connection timed out.");
+                return VirusScanResult.Infected("SCAN_TIMEOUT", "Hệ thống quét virus phản hồi quá hạn.");
             }
 
             using var networkStream = tcpClient.GetStream();
@@ -97,12 +85,13 @@ public class ClamAvVirusScannerService : IVirusScannerService
 
             _logger.LogInformation("ClamAV scan completed. Raw response: {Response}", response);
 
-            if (response.EndsWith("OK", StringComparison.OrdinalIgnoreCase))
+            if (string.Equals(response, "stream: OK", StringComparison.OrdinalIgnoreCase))
             {
                 return VirusScanResult.Clean();
             }
 
-            if (response.Contains("FOUND", StringComparison.OrdinalIgnoreCase))
+            if (response.StartsWith("stream: ", StringComparison.OrdinalIgnoreCase)
+                && response.EndsWith(" FOUND", StringComparison.OrdinalIgnoreCase))
             {
                 // Format is usually "stream: <VirusName> FOUND"
                 var parts = response.Split(' ', StringSplitOptions.RemoveEmptyEntries);
@@ -111,29 +100,17 @@ public class ClamAvVirusScannerService : IVirusScannerService
                 return VirusScanResult.Infected(virusName, $"Phát hiện mã độc: {virusName}");
             }
 
-            return VirusScanResult.Clean();
+            return VirusScanResult.Infected("SCAN_PROTOCOL_ERROR", "Phản hồi quét mã độc không hợp lệ.");
         }
         catch (SocketException ex)
         {
-            if (!_environment.IsDevelopment())
-            {
-                _logger.LogError(ex, "ClamAV daemon is not reachable at {Host}:{Port} in Non-Development. Fail-closed enforced.", _host, _port);
-                return VirusScanResult.Infected("SCAN_UNAVAILABLE", "Dịch vụ kiểm tra mã độc ClamAV không phản hồi. Tệp tin không được phép tải lên môi trường Production.");
-            }
-
-            _logger.LogWarning(ex, "ClamAV daemon is not reachable at {Host}:{Port}. Skipping ClamAV scan in development.", _host, _port);
-            return VirusScanResult.Clean();
+            _logger.LogError(ex, "ClamAV daemon is unavailable.");
+            return VirusScanResult.Infected("SCAN_UNAVAILABLE", "Dịch vụ kiểm tra mã độc không phản hồi.");
         }
         catch (Exception ex)
         {
-            if (!_environment.IsDevelopment())
-            {
-                _logger.LogError(ex, "Error occurred during ClamAV virus scanning in Non-Development. Fail-closed enforced.");
-                return VirusScanResult.Infected("SCAN_ERROR", "Xảy ra lỗi trong quá trình quét mã độc tệp tin. Upload bị hủy vì lý do an toàn bảo mật.");
-            }
-
-            _logger.LogError(ex, "Error occurred during ClamAV virus scanning in Development.");
-            return VirusScanResult.Clean();
+            _logger.LogError(ex, "Error occurred during ClamAV virus scanning.");
+            return VirusScanResult.Infected("SCAN_ERROR", "Xảy ra lỗi trong quá trình quét mã độc.");
         }
         finally
         {

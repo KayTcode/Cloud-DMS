@@ -2,6 +2,7 @@ namespace CleanArchCqrs.Application.Common.Authorization;
 
 public static class PermissionNames
 {
+    public const string FileUpload = "file.upload";
     public const string FileRestore = "file.restore";
     public const string FilePurge = "file.purge";
     public const string FileRead = "file.read";
