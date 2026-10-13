@@ -4,6 +4,8 @@ namespace CleanArchCqrs.Domain.Entities;
 
 public class Folder : BaseEntity
 {
+    public long AuthorizationVersion { get; set; } = 1;
+
     public Guid TenantId { get; set; }
 
     public Guid? ParentFolderId { get; set; }

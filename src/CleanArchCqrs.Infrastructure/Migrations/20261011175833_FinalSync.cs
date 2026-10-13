@@ -11,13 +11,6 @@ namespace CleanArchCqrs.Infrastructure.Migrations
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.DropIndex(
-                name: "IX_Roles_Name",
-                table: "Roles");
-
-            migrationBuilder.DropIndex(
-                name: "IX_AuditLogs_TenantId_CreatedAt",
-                table: "AuditLogs");
 
             migrationBuilder.AddColumn<Guid>(
                 name: "DepartmentId",
@@ -32,13 +25,6 @@ namespace CleanArchCqrs.Infrastructure.Migrations
                 type: "char(36)",
                 nullable: true,
                 collation: "ascii_general_ci");
-
-            migrationBuilder.AddColumn<string>(
-                name: "ScanStatus",
-                table: "FileEntries",
-                type: "longtext",
-                nullable: false)
-                .Annotation("MySql:CharSet", "utf8mb4");
 
             migrationBuilder.AlterColumn<string>(
                 name: "Description",
@@ -121,10 +107,6 @@ namespace CleanArchCqrs.Infrastructure.Migrations
                 table: "FileEntries");
 
             migrationBuilder.DropColumn(
-                name: "ScanStatus",
-                table: "FileEntries");
-
-            migrationBuilder.DropColumn(
                 name: "StorageQuotaBytes",
                 table: "Departments");
 
@@ -144,16 +126,6 @@ namespace CleanArchCqrs.Infrastructure.Migrations
                 .Annotation("MySql:CharSet", "utf8mb4")
                 .OldAnnotation("MySql:CharSet", "utf8mb4");
 
-            migrationBuilder.CreateIndex(
-                name: "IX_Roles_Name",
-                table: "Roles",
-                column: "Name",
-                unique: true);
-
-            migrationBuilder.CreateIndex(
-                name: "IX_AuditLogs_TenantId_CreatedAt",
-                table: "AuditLogs",
-                columns: new[] { "TenantId", "CreatedAt" });
         }
     }
 }

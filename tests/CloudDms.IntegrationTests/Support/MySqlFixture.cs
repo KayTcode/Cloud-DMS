@@ -73,6 +73,9 @@ public sealed class MySqlFixture : IAsyncLifetime
         await context.Database.GetService<IMigrator>()
             .MigrateAsync("20261008055802_AddGoogleIdentity");
         await SeedLegacyAuthorizationRowsAsync(context);
+        // B?ng sentinel m? ph?ng d? li?u c? kh?ng c?n trong model hi?n t?i.
+        await context.Database.ExecuteSqlRawAsync("CREATE TABLE Products (Id int PRIMARY KEY)");
+        await context.Database.ExecuteSqlRawAsync("INSERT INTO Products (Id) VALUES (1)");
         await context.Database.MigrateAsync();
     }
 
@@ -180,7 +183,7 @@ public sealed class MySqlFixture : IAsyncLifetime
                  `SizeBytes`, `Hash`, `ScanStatus`, `IsDeleted`, `CreatedAt`, `UpdatedAt`)
             VALUES
                 ({LegacyFileId}, {LegacyTenantId}, {LegacyUserId}, NULL, 'legacy.txt', 'legacy/storage-key',
-                 'text/plain', 10, NULL, 'Clean', 1, {now}, NULL);
+                 'text/plain', 10, NULL, 'Infected', 1, {now}, NULL);
             """);
 
         await context.Database.ExecuteSqlInterpolatedAsync($"""

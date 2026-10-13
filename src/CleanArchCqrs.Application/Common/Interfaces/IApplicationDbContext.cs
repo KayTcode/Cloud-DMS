@@ -5,6 +5,16 @@ namespace CleanArchCqrs.Application.Common.Interfaces;
 
 public interface IApplicationDbContext
 {
+    DbSet<FileContentVersion> FileContentVersions { get; }
+    DbSet<FileSearchGeneration> FileSearchGenerations { get; }
+    DbSet<FileTextChunk> FileTextChunks { get; }
+    DbSet<FilePreviewArtifact> FilePreviewArtifacts { get; }
+    DbSet<DocumentOutboxMessage> DocumentOutboxMessages { get; }
+    DbSet<FileUploadSession> FileUploadSessions { get; }
+    DbSet<Team> Teams { get; }
+    DbSet<TeamMember> TeamMembers { get; }
+    DbSet<ResourceGrant> ResourceGrants { get; }
+
     DbSet<User> Users { get; }
     DbSet<Role> Roles { get; }
     DbSet<Permission> Permissions { get; }

@@ -22,6 +22,37 @@ namespace CleanArchCqrs.Infrastructure.Persistence.Migrations
 
             MySqlModelBuilderExtensions.AutoIncrementColumns(modelBuilder);
 
+            modelBuilder.Entity("CleanArchCqrs.Domain.Entities.Product", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("char(36)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<string>("Description")
+                        .IsRequired()
+                        .HasColumnType("longtext");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasColumnType("longtext");
+
+                    b.Property<decimal>("Price")
+                        .HasColumnType("decimal(65,30)");
+
+                    b.Property<int>("StockQuantity")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("Products");
+                });
+
             modelBuilder.Entity("CleanArchCqrs.Domain.Entities.AuditLog", b =>
                 {
                     b.Property<Guid>("Id")
@@ -37,7 +68,6 @@ namespace CleanArchCqrs.Infrastructure.Persistence.Migrations
                         .HasColumnType("datetime(6)");
 
                     b.Property<string>("Details")
-                        .HasMaxLength(4000)
                         .HasColumnType("longtext");
 
                     b.Property<Guid?>("EntityId")
@@ -195,8 +225,7 @@ namespace CleanArchCqrs.Infrastructure.Persistence.Migrations
                         .HasColumnType("datetime(6)");
 
                     b.Property<string>("Description")
-                        .HasMaxLength(500)
-                        .HasColumnType("varchar(500)");
+                        .HasColumnType("longtext");
 
                     b.Property<bool>("IsActive")
                         .HasColumnType("tinyint(1)");
@@ -222,6 +251,9 @@ namespace CleanArchCqrs.Infrastructure.Persistence.Migrations
                         .HasColumnType("bigint")
                         .HasDefaultValue(0L);
 
+                    b.Property<long>("StorageQuotaBytes").HasColumnType("bigint");
+                    b.Property<long>("StorageUsedBytes").HasColumnType("bigint");
+
                     b.HasKey("Id");
 
                     b.HasIndex("TenantId", "Code")
@@ -235,6 +267,79 @@ namespace CleanArchCqrs.Infrastructure.Persistence.Migrations
 
                             t.HasCheckConstraint("CK_Departments_UsedBytes_NonNegative", "`UsedBytes` >= 0");
                         });
+                });
+
+            modelBuilder.Entity("CleanArchCqrs.Domain.Entities.DocumentOutboxMessage", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("char(36)");
+
+                    b.Property<int>("AttemptCount")
+                        .HasColumnType("int");
+
+                    b.Property<DateTimeOffset?>("CompletedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<long>("DocumentVersion")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("EventType")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("varchar(64)");
+
+                    b.Property<string>("FailureCode")
+                        .HasMaxLength(128)
+                        .HasColumnType("varchar(128)");
+
+                    b.Property<Guid>("FileId")
+                        .HasColumnType("char(36)");
+
+                    b.Property<string>("IdempotencyKey")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("varchar(128)");
+
+                    b.Property<DateTimeOffset?>("LeaseExpiresAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<Guid?>("LeaseOwnerId")
+                        .HasColumnType("char(36)");
+
+                    b.Property<DateTimeOffset>("NextAttemptAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<string>("Payload")
+                        .IsRequired()
+                        .HasColumnType("longtext");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("varchar(32)");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("char(36)");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId");
+
+                    b.HasIndex("TenantId", "IdempotencyKey")
+                        .IsUnique();
+
+                    b.HasIndex("Status", "NextAttemptAt", "LeaseExpiresAt");
+
+                    b.HasIndex("TenantId", "FileId", "DocumentVersion");
+
+                    b.ToTable("DocumentOutboxMessages");
                 });
 
             modelBuilder.Entity("CleanArchCqrs.Domain.Entities.EmailVerificationToken", b =>
@@ -283,10 +388,71 @@ namespace CleanArchCqrs.Infrastructure.Persistence.Migrations
                     b.ToTable("EmailVerificationTokens", (string)null);
                 });
 
-            modelBuilder.Entity("CleanArchCqrs.Domain.Entities.FileEntry", b =>
+            modelBuilder.Entity("CleanArchCqrs.Domain.Entities.FileContentVersion", b =>
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
+                        .HasColumnType("char(36)");
+
+                    b.Property<string>("ContentType")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("varchar(255)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<long>("DocumentVersion")
+                        .HasColumnType("bigint");
+
+                    b.Property<Guid>("FileId")
+                        .HasColumnType("char(36)");
+
+                    b.Property<string>("Hash")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("varchar(128)");
+
+                    b.Property<string>("ObjectKey")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("varchar(500)");
+
+                    b.Property<Guid>("ProviderId")
+                        .HasColumnType("char(36)");
+
+                    b.Property<string>("ScanStatus")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("varchar(32)");
+
+                    b.Property<long>("SizeBytes")
+                        .HasColumnType("bigint");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("char(36)");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ProviderId");
+
+                    b.HasIndex("TenantId");
+
+                    b.HasIndex("FileId", "DocumentVersion")
+                        .IsUnique();
+
+                    b.ToTable("FileContentVersions");
+                });
+
+            modelBuilder.Entity("CleanArchCqrs.Domain.Entities.FileEntry", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("char(36)");
+
+                    b.Property<Guid?>("ActiveSearchGenerationId")
                         .HasColumnType("char(36)");
 
                     b.Property<long>("AuthorizationVersion")
@@ -302,6 +468,21 @@ namespace CleanArchCqrs.Infrastructure.Persistence.Migrations
 
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("datetime(6)");
+
+                    b.Property<DateTime?>("DeletedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<Guid?>("DeletedByUserId")
+                        .HasColumnType("char(36)");
+
+                    b.Property<Guid?>("DepartmentId")
+                        .HasColumnType("char(36)");
+
+                    b.Property<long>("DocumentVersion")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint")
+                        .HasDefaultValue(1L);
 
                     b.Property<Guid?>("FolderId")
                         .HasColumnType("char(36)");
@@ -357,6 +538,10 @@ namespace CleanArchCqrs.Infrastructure.Persistence.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("DeletedByUserId");
+
+                    b.HasIndex("DepartmentId");
+
                     b.HasIndex("FolderId");
 
                     b.HasIndex("OwnerId");
@@ -370,7 +555,130 @@ namespace CleanArchCqrs.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("TenantId");
 
+                    b.HasIndex("TenantId", "Id", "ActiveSearchGenerationId");
+
                     b.ToTable("FileEntries", (string)null);
+                });
+
+            modelBuilder.Entity("CleanArchCqrs.Domain.Entities.FilePreviewArtifact", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("char(36)");
+
+                    b.Property<string>("ConverterVersion")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("varchar(128)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<long>("DocumentVersion")
+                        .HasColumnType("bigint");
+
+                    b.Property<DateTimeOffset?>("ExpiresAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<Guid>("FileId")
+                        .HasColumnType("char(36)");
+
+                    b.Property<string>("Format")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("varchar(32)");
+
+                    b.Property<string>("ObjectKey")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("varchar(500)");
+
+                    b.Property<Guid>("ProviderId")
+                        .HasColumnType("char(36)");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("varchar(32)");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("char(36)");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ProviderId");
+
+                    b.HasIndex("TenantId");
+
+                    b.HasIndex("TenantId", "FileId", "DocumentVersion");
+
+                    b.HasIndex("FileId", "DocumentVersion", "ConverterVersion", "Format")
+                        .IsUnique();
+
+                    b.ToTable("FilePreviewArtifacts");
+                });
+
+            modelBuilder.Entity("CleanArchCqrs.Domain.Entities.FileSearchGeneration", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("char(36)");
+
+                    b.Property<string>("ChunkerVersion")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("varchar(128)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<long>("DocumentVersion")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("ExtractorVersion")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("varchar(128)");
+
+                    b.Property<string>("FailureCode")
+                        .HasMaxLength(128)
+                        .HasColumnType("varchar(128)");
+
+                    b.Property<Guid>("FileId")
+                        .HasColumnType("char(36)");
+
+                    b.Property<bool>("IsPartial")
+                        .HasColumnType("tinyint(1)");
+
+                    b.Property<string>("ModelVersion")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("varchar(128)");
+
+                    b.Property<DateTimeOffset?>("PublishedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("varchar(32)");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("char(36)");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId");
+
+                    b.HasIndex("TenantId", "FileId", "DocumentVersion", "Status");
+
+                    b.ToTable("FileSearchGenerations");
                 });
 
             modelBuilder.Entity("CleanArchCqrs.Domain.Entities.FileShare", b =>
@@ -415,7 +723,7 @@ namespace CleanArchCqrs.Infrastructure.Persistence.Migrations
                     b.ToTable("FileShares", (string)null);
                 });
 
-            modelBuilder.Entity("CleanArchCqrs.Domain.Entities.Folder", b =>
+            modelBuilder.Entity("CleanArchCqrs.Domain.Entities.FileTextChunk", b =>
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
@@ -423,6 +731,123 @@ namespace CleanArchCqrs.Infrastructure.Persistence.Migrations
 
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("datetime(6)");
+
+                    b.Property<Guid>("GenerationId")
+                        .HasColumnType("char(36)");
+
+                    b.Property<string>("Location")
+                        .HasMaxLength(500)
+                        .HasColumnType("varchar(500)");
+
+                    b.Property<int>("Ordinal")
+                        .HasColumnType("int");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("char(36)");
+
+                    b.Property<string>("Text")
+                        .IsRequired()
+                        .HasColumnType("longtext");
+
+                    b.Property<int>("TokenCount")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId");
+
+                    b.HasIndex("GenerationId", "Ordinal")
+                        .IsUnique();
+
+                    b.HasIndex("TenantId", "GenerationId");
+
+                    b.ToTable("FileTextChunks");
+                });
+
+            modelBuilder.Entity("CleanArchCqrs.Domain.Entities.FileUploadSession", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("char(36)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<long>("DocumentVersion")
+                        .HasColumnType("bigint");
+
+                    b.Property<DateTimeOffset>("ExpiresAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<Guid>("FileId")
+                        .HasColumnType("char(36)");
+
+                    b.Property<string>("IdempotencyKey")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("varchar(128)");
+
+                    b.Property<string>("ObjectKey")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("varchar(500)");
+
+                    b.Property<Guid>("ProviderId")
+                        .HasColumnType("char(36)");
+
+                    b.Property<long>("ReservedBytes")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("varchar(32)");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("char(36)");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("char(36)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ProviderId");
+
+                    b.HasIndex("TenantId");
+
+                    b.HasIndex("UserId");
+
+                    b.HasIndex("Status", "ExpiresAt");
+
+                    b.HasIndex("TenantId", "UserId", "IdempotencyKey")
+                        .IsUnique();
+
+                    b.ToTable("FileUploadSessions");
+                });
+
+            modelBuilder.Entity("CleanArchCqrs.Domain.Entities.Folder", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("char(36)");
+
+                    b.Property<long>("AuthorizationVersion")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint")
+                        .HasDefaultValue(1L);
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<Guid?>("DepartmentId")
+                        .HasColumnType("char(36)");
 
                     b.Property<string>("Name")
                         .IsRequired()
@@ -439,6 +864,8 @@ namespace CleanArchCqrs.Infrastructure.Persistence.Migrations
                         .HasColumnType("datetime(6)");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("DepartmentId");
 
                     b.HasIndex("ParentFolderId");
 
@@ -517,37 +944,6 @@ namespace CleanArchCqrs.Infrastructure.Persistence.Migrations
                         .IsUnique();
 
                     b.ToTable("Permissions", (string)null);
-                });
-
-            modelBuilder.Entity("CleanArchCqrs.Domain.Entities.Product", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("char(36)");
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("datetime(6)");
-
-                    b.Property<string>("Description")
-                        .IsRequired()
-                        .HasColumnType("longtext");
-
-                    b.Property<string>("Name")
-                        .IsRequired()
-                        .HasColumnType("longtext");
-
-                    b.Property<decimal>("Price")
-                        .HasColumnType("decimal(65,30)");
-
-                    b.Property<int>("StockQuantity")
-                        .HasColumnType("int");
-
-                    b.Property<DateTime?>("UpdatedAt")
-                        .HasColumnType("datetime(6)");
-
-                    b.HasKey("Id");
-
-                    b.ToTable("Products");
                 });
 
             modelBuilder.Entity("CleanArchCqrs.Domain.Entities.QuotaReservation", b =>
@@ -649,6 +1045,57 @@ namespace CleanArchCqrs.Infrastructure.Persistence.Migrations
                     b.HasIndex("UserId");
 
                     b.ToTable("RefreshTokens", (string)null);
+                });
+
+            modelBuilder.Entity("CleanArchCqrs.Domain.Entities.ResourceGrant", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("char(36)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<DateTimeOffset?>("ExpiresAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<Guid>("PrincipalId")
+                        .HasColumnType("char(36)");
+
+                    b.Property<string>("PrincipalKind")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("varchar(32)");
+
+                    b.Property<Guid>("ResourceId")
+                        .HasColumnType("char(36)");
+
+                    b.Property<string>("ResourceKind")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("varchar(32)");
+
+                    b.Property<string>("Role")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("varchar(32)");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("char(36)");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId");
+
+                    b.HasIndex("TenantId", "PrincipalKind", "PrincipalId", "ExpiresAt");
+
+                    b.HasIndex("TenantId", "ResourceKind", "ResourceId", "PrincipalKind", "PrincipalId")
+                        .IsUnique();
+
+                    b.ToTable("ResourceGrants");
                 });
 
             modelBuilder.Entity("CleanArchCqrs.Domain.Entities.Role", b =>
@@ -764,6 +1211,76 @@ namespace CleanArchCqrs.Infrastructure.Persistence.Migrations
                     b.HasKey("Id");
 
                     b.ToTable("StorageProviders", (string)null);
+                });
+
+            modelBuilder.Entity("CleanArchCqrs.Domain.Entities.Team", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("char(36)");
+
+                    b.Property<long>("AuthorizationVersion")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint")
+                        .HasDefaultValue(1L);
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("varchar(255)");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("char(36)");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId");
+
+                    b.ToTable("Teams");
+                });
+
+            modelBuilder.Entity("CleanArchCqrs.Domain.Entities.TeamMember", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("char(36)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<Guid>("TeamId")
+                        .HasColumnType("char(36)");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("char(36)");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("char(36)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId");
+
+                    b.HasIndex("UserId");
+
+                    b.HasIndex("TeamId", "UserId")
+                        .IsUnique();
+
+                    b.HasIndex("TenantId", "TeamId");
+
+                    b.HasIndex("TenantId", "UserId");
+
+                    b.ToTable("TeamMembers");
                 });
 
             modelBuilder.Entity("CleanArchCqrs.Domain.Entities.Tenant", b =>
@@ -995,6 +1512,22 @@ namespace CleanArchCqrs.Infrastructure.Persistence.Migrations
                     b.Navigation("Tenant");
                 });
 
+            modelBuilder.Entity("CleanArchCqrs.Domain.Entities.DocumentOutboxMessage", b =>
+                {
+                    b.HasOne("CleanArchCqrs.Domain.Entities.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("CleanArchCqrs.Domain.Entities.FileEntry", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId", "FileId")
+                        .HasPrincipalKey("TenantId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("CleanArchCqrs.Domain.Entities.EmailVerificationToken", b =>
                 {
                     b.HasOne("CleanArchCqrs.Domain.Entities.User", "User")
@@ -1006,8 +1539,40 @@ namespace CleanArchCqrs.Infrastructure.Persistence.Migrations
                     b.Navigation("User");
                 });
 
+            modelBuilder.Entity("CleanArchCqrs.Domain.Entities.FileContentVersion", b =>
+                {
+                    b.HasOne("CleanArchCqrs.Domain.Entities.StorageProvider", null)
+                        .WithMany()
+                        .HasForeignKey("ProviderId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("CleanArchCqrs.Domain.Entities.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("CleanArchCqrs.Domain.Entities.FileEntry", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId", "FileId")
+                        .HasPrincipalKey("TenantId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("CleanArchCqrs.Domain.Entities.FileEntry", b =>
                 {
+                    b.HasOne("CleanArchCqrs.Domain.Entities.User", "DeletedByUser")
+                        .WithMany()
+                        .HasForeignKey("DeletedByUserId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.HasOne("CleanArchCqrs.Domain.Entities.Department", "Department")
+                        .WithMany("Files")
+                        .HasForeignKey("DepartmentId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
                     b.HasOne("CleanArchCqrs.Domain.Entities.Folder", "Folder")
                         .WithMany("Files")
                         .HasForeignKey("FolderId")
@@ -1035,6 +1600,16 @@ namespace CleanArchCqrs.Infrastructure.Persistence.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
+                    b.HasOne("CleanArchCqrs.Domain.Entities.FileSearchGeneration", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId", "Id", "ActiveSearchGenerationId")
+                        .HasPrincipalKey("TenantId", "FileId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.Navigation("DeletedByUser");
+
+                    b.Navigation("Department");
+
                     b.Navigation("Folder");
 
                     b.Navigation("Owner");
@@ -1044,6 +1619,44 @@ namespace CleanArchCqrs.Infrastructure.Persistence.Migrations
                     b.Navigation("StorageProvider");
 
                     b.Navigation("Tenant");
+                });
+
+            modelBuilder.Entity("CleanArchCqrs.Domain.Entities.FilePreviewArtifact", b =>
+                {
+                    b.HasOne("CleanArchCqrs.Domain.Entities.StorageProvider", null)
+                        .WithMany()
+                        .HasForeignKey("ProviderId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("CleanArchCqrs.Domain.Entities.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("CleanArchCqrs.Domain.Entities.FileContentVersion", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId", "FileId", "DocumentVersion")
+                        .HasPrincipalKey("TenantId", "FileId", "DocumentVersion")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("CleanArchCqrs.Domain.Entities.FileSearchGeneration", b =>
+                {
+                    b.HasOne("CleanArchCqrs.Domain.Entities.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("CleanArchCqrs.Domain.Entities.FileContentVersion", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId", "FileId", "DocumentVersion")
+                        .HasPrincipalKey("TenantId", "FileId", "DocumentVersion")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("CleanArchCqrs.Domain.Entities.FileShare", b =>
@@ -1065,8 +1678,50 @@ namespace CleanArchCqrs.Infrastructure.Persistence.Migrations
                     b.Navigation("SharedWithUser");
                 });
 
+            modelBuilder.Entity("CleanArchCqrs.Domain.Entities.FileTextChunk", b =>
+                {
+                    b.HasOne("CleanArchCqrs.Domain.Entities.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("CleanArchCqrs.Domain.Entities.FileSearchGeneration", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId", "GenerationId")
+                        .HasPrincipalKey("TenantId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("CleanArchCqrs.Domain.Entities.FileUploadSession", b =>
+                {
+                    b.HasOne("CleanArchCqrs.Domain.Entities.StorageProvider", null)
+                        .WithMany()
+                        .HasForeignKey("ProviderId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("CleanArchCqrs.Domain.Entities.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("CleanArchCqrs.Domain.Entities.User", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("CleanArchCqrs.Domain.Entities.Folder", b =>
                 {
+                    b.HasOne("CleanArchCqrs.Domain.Entities.Department", "Department")
+                        .WithMany("Folders")
+                        .HasForeignKey("DepartmentId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
                     b.HasOne("CleanArchCqrs.Domain.Entities.Folder", "ParentFolder")
                         .WithMany("Children")
                         .HasForeignKey("ParentFolderId")
@@ -1077,6 +1732,8 @@ namespace CleanArchCqrs.Infrastructure.Persistence.Migrations
                         .HasForeignKey("TenantId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
+
+                    b.Navigation("Department");
 
                     b.Navigation("ParentFolder");
 
@@ -1121,6 +1778,15 @@ namespace CleanArchCqrs.Infrastructure.Persistence.Migrations
                     b.Navigation("User");
                 });
 
+            modelBuilder.Entity("CleanArchCqrs.Domain.Entities.ResourceGrant", b =>
+                {
+                    b.HasOne("CleanArchCqrs.Domain.Entities.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("CleanArchCqrs.Domain.Entities.Role", b =>
                 {
                     b.HasOne("CleanArchCqrs.Domain.Entities.Tenant", "Tenant")
@@ -1148,6 +1814,37 @@ namespace CleanArchCqrs.Infrastructure.Persistence.Migrations
                     b.Navigation("Permission");
 
                     b.Navigation("Role");
+                });
+
+            modelBuilder.Entity("CleanArchCqrs.Domain.Entities.Team", b =>
+                {
+                    b.HasOne("CleanArchCqrs.Domain.Entities.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("CleanArchCqrs.Domain.Entities.TeamMember", b =>
+                {
+                    b.HasOne("CleanArchCqrs.Domain.Entities.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("CleanArchCqrs.Domain.Entities.User", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("CleanArchCqrs.Domain.Entities.Team", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId", "TeamId")
+                        .HasPrincipalKey("TenantId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("CleanArchCqrs.Domain.Entities.Tenant", b =>
@@ -1217,6 +1914,10 @@ namespace CleanArchCqrs.Infrastructure.Persistence.Migrations
 
             modelBuilder.Entity("CleanArchCqrs.Domain.Entities.Department", b =>
                 {
+                    b.Navigation("Files");
+
+                    b.Navigation("Folders");
+
                     b.Navigation("UserStorageQuotas");
 
                     b.Navigation("Users");

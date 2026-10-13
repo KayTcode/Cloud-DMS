@@ -12,6 +12,12 @@ public class FileEntryConfiguration : IEntityTypeConfiguration<FileEntry>
         builder.ToTable("FileEntries");
 
         builder.HasKey(f => f.Id);
+        builder.HasAlternateKey(f => new { f.TenantId, f.Id });
+        builder.Property(f => f.DocumentVersion).HasDefaultValue(1L).IsConcurrencyToken();
+        builder.HasOne<FileSearchGeneration>().WithMany()
+            .HasForeignKey(f => new { f.TenantId, f.Id, f.ActiveSearchGenerationId })
+            .HasPrincipalKey(g => new { g.TenantId, g.FileId, g.Id })
+            .OnDelete(DeleteBehavior.Restrict);
 
         builder.Property(f => f.Name)
             .IsRequired()

@@ -24,6 +24,16 @@ public class AppDbContext : DbContext, IApplicationDbContext
         _currentUserService = currentUserService;
     }
 
+    public DbSet<FileContentVersion> FileContentVersions => Set<FileContentVersion>();
+    public DbSet<FileSearchGeneration> FileSearchGenerations => Set<FileSearchGeneration>();
+    public DbSet<FileTextChunk> FileTextChunks => Set<FileTextChunk>();
+    public DbSet<FilePreviewArtifact> FilePreviewArtifacts => Set<FilePreviewArtifact>();
+    public DbSet<DocumentOutboxMessage> DocumentOutboxMessages => Set<DocumentOutboxMessage>();
+    public DbSet<FileUploadSession> FileUploadSessions => Set<FileUploadSession>();
+    public DbSet<Team> Teams => Set<Team>();
+    public DbSet<TeamMember> TeamMembers => Set<TeamMember>();
+    public DbSet<ResourceGrant> ResourceGrants => Set<ResourceGrant>();
+
     public DbSet<Tenant> Tenants => Set<Tenant>();
     public DbSet<Department> Departments => Set<Department>();
     public DbSet<User> Users => Set<User>();

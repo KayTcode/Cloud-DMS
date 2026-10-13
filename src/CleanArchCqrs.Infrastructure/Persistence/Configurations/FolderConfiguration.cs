@@ -11,6 +11,7 @@ public class FolderConfiguration : IEntityTypeConfiguration<Folder>
         builder.ToTable("Folders");
 
         builder.HasKey(f => f.Id);
+        builder.Property(f => f.AuthorizationVersion).HasDefaultValue(1L).IsConcurrencyToken();
 
         builder.Property(f => f.Name)
             .IsRequired()
