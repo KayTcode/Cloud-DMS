@@ -49,3 +49,11 @@ Sau Task 11: build Python image/resolve pinned dependencies và kiểm syntax/st
 Dịch vụ single-request có thể làm query chờ sau indexing; Task 9 phải giữ deadline/degraded và giai đoạn benchmark quyết định tách replica query/index nếu cần. Cleanup namespace phải được dành riêng cho ứng dụng; không áp dụng cho collection ngoài namespace. Resource caps, package lock và Docker build hiện mới review tĩnh, cần kiểm chứng sau Task 11.
 
 Nguồn chính thức đã đối chiếu: [E5 model card](https://huggingface.co/intfloat/multilingual-e5-small/raw/main/README.md) cho prefix/masked pooling/normalize/512; [Qdrant points](https://qdrant.tech/documentation/manage-data/points/) và [filtering](https://qdrant.tech/documentation/search/filtering/). Revision và image digest theo brief controller đã xác minh.
+
+## Sửa review vòng 1 — I1 deadline request line/header
+
+BASE sửa: `e253fd4`. Đã đọc `task-8-review.md` và mã Handler; xác nhận socket timeout 10 giây chỉ là inactivity timeout, nên header gửi nhỏ giọt có thể chiếm server tuần tự trước khi watchdog cũ bắt đầu trong do_POST.
+
+Đã chuyển deadline 110 giây/watchdog 115 giây vào `setup()`, trước lần đọc request line/header đầu tiên của BaseHTTPRequestHandler. `do_POST` dùng deadline đã tạo, không cấp lại budget sau header. Timer tồn tại xuyên header/body/inference/response và flush cuối; `finish()` hủy timer trong finally, áp dụng cả GET, header lỗi, client ngắt kết nối và exception xử lý. Watchdog vẫn dùng chính sách kết thúc process/restart compose để chặn cả native inference mắc kẹt; socket inactivity timeout và các giới hạn body/batch giữ nguyên.
+
+Tự review tĩnh vòng đời setup → handle → finish của Handler, đường malformed header/GET/POST và cleanup finally. `git diff --check` exit 0. Không thay mã .NET nên không biên dịch lại API; không chạy Python, service, test, DB/integration/benchmark theo user override. Test hoãn bổ sung: request line/header nhỏ giọt dưới 10 giây mỗi byte phải bị giới hạn thời gian tổng; process/service phục hồi, request tiếp theo được xử lý; GET/header lỗi/disconnect phải hủy timer để không giết request tiếp theo; POST không reset deadline sau header.

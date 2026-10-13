@@ -140,6 +140,20 @@ class Handler(BaseHTTPRequestHandler):
     def setup(self):
         super().setup()
         self.connection.settimeout(10)
+        # setup runs before BaseHTTPRequestHandler reads the request line/headers.
+        # One absolute budget covers slow headers, body, inference and response.
+        self.deadline = time.monotonic() + 110
+        self.watchdog = threading.Timer(115, lambda: os._exit(70))
+        self.watchdog.daemon = True
+        self.watchdog.start()
+
+    def finish(self):
+        try:
+            super().finish()
+        finally:
+            # BaseRequestHandler invokes finish even when parsing/handling fails;
+            # this also covers GET, malformed headers and disconnected clients.
+            self.watchdog.cancel()
 
     def reply(self, status, data):
         body = json.dumps(data, ensure_ascii=False, allow_nan=False, separators=(",", ":")).encode("utf-8")
@@ -193,13 +207,9 @@ class Handler(BaseHTTPRequestHandler):
         return body
 
     def do_POST(self):
-        deadline = time.monotonic() + 110
-        # Torch may be inside native CPU code when the deadline expires. Restart the
-        # isolated single-request process rather than retain a runaway inference.
-        watchdog = threading.Timer(115, lambda: os._exit(70))
-        watchdog.daemon = True
-        watchdog.start()
+        deadline = self.deadline
         try:
+            deadline_check(deadline)
             require(self.path in ("/embed", "/chunk"))
             data = self.read_body(deadline)
             require(isinstance(data, dict))
@@ -211,8 +221,6 @@ class Handler(BaseHTTPRequestHandler):
             self.reply(503, {"error": "EMBEDDING_TIMEOUT"})
         except Exception:
             self.reply(503, {"error": "EMBEDDING_UNAVAILABLE"})
-        finally:
-            watchdog.cancel()
 
 
 class Server(HTTPServer):
