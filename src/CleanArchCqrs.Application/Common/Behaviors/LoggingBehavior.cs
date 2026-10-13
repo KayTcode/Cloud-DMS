@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using MediatR;
 using Microsoft.Extensions.Logging;
+using CleanArchCqrs.Application.Common.Interfaces;
 
 namespace CleanArchCqrs.Application.Common.Behaviors;
 
@@ -46,6 +47,13 @@ public class LoggingBehavior<TRequest, TResponse> : IPipelineBehavior<TRequest, 
         catch (Exception ex)
         {
             stopwatch.Stop();
+
+            if (request is ISensitiveReadRequest)
+            {
+                _logger.LogWarning("[{CorrelationId}] Sensitive read {RequestName} failed after {ElapsedMilliseconds}ms",
+                    correlationId, requestName, stopwatch.ElapsedMilliseconds);
+                throw;
+            }
 
             _logger.LogError(
                 ex,

@@ -1,10 +1,11 @@
 using CleanArchCqrs.Application.Common.Models;
 using CleanArchCqrs.Application.Features.Files.DTOs;
 using MediatR;
+using CleanArchCqrs.Application.Common.Interfaces;
 
 namespace CleanArchCqrs.Application.Features.Files.Queries.GetTenantFiles;
 
-public record GetTenantFilesQuery : IRequest<Result<TenantStorageSummaryDto>>
+public record GetTenantFilesQuery : IRequest<Result<TenantStorageSummaryDto>>, ISensitiveReadRequest
 {
     public Guid? TenantId { get; init; }
     public Guid? FolderId { get; init; }

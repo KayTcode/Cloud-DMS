@@ -33,5 +33,6 @@ public record TenantStorageSummaryDto(
     List<FileEntryDto> Files,
     int TotalCount = 0,
     int PageNumber = 1,
-    int PageSize = 20
+    int PageSize = 20,
+    bool HasMore = false
 );

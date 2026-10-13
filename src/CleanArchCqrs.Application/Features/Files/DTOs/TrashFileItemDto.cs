@@ -23,5 +23,6 @@ public record TrashFileListDto(
     int TotalCount,
     int PageNumber,
     int PageSize,
-    long TotalTrashSizeBytes
+    long TotalTrashSizeBytes,
+    bool HasMore = false
 );

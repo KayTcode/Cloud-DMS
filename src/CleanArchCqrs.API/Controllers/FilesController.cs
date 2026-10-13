@@ -14,6 +14,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
+using CleanArchCqrs.Application.Features.Files.Queries.SearchFiles;
 
 namespace CleanArchCqrs.API.Controllers;
 
@@ -152,7 +153,8 @@ public class FilesController : ApiControllerBase
     /// <summary>
     /// Gets list of files and storage quota summary for tenant.
     /// </summary>
-    [Authorize(Policy = "file.read")]
+    [Authorize]
+    [EnableRateLimiting("file-search")]
     [HttpGet]
     [ProducesResponseType(typeof(Result<TenantStorageSummaryDto>), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(Result), StatusCodes.Status400BadRequest)]
@@ -172,8 +174,21 @@ public class FilesController : ApiControllerBase
             SearchTerm = searchTerm
         };
 
-        var result = await Sender.Send(query);
-        return HandleResult(result);
+        Response.Headers.CacheControl = "no-store";
+        return await FileSearchHttpResult.ExecuteAsync(async () =>
+            HandleResult(await Sender.Send(query, HttpContext.RequestAborted)), HttpContext.RequestAborted);
+    }
+
+    [Authorize]
+    [EnableRateLimiting("file-search")]
+    [HttpGet("search")]
+    public async Task<ActionResult> Search([FromQuery] string q, [FromQuery] string mode = "hybrid",
+        [FromQuery] Guid? folderId = null, [FromQuery] int pageSize = 20,
+        [FromQuery] string? cursor = null, CancellationToken cancellationToken = default)
+    {
+        Response.Headers.CacheControl = "no-store";
+        return await FileSearchHttpResult.ExecuteAsync(async () =>
+            Ok(await Sender.Send(new SearchFilesQuery(q, mode, folderId, pageSize, cursor), cancellationToken)), cancellationToken);
     }
 
     /// <summary>
@@ -220,7 +235,8 @@ public class FilesController : ApiControllerBase
     /// <summary>
     /// Lấy danh sách tệp tin trong thùng rác (Recycle Bin) có phân quyền theo Role.
     /// </summary>
-    [Authorize(Policy = "file.read")]
+    [Authorize]
+    [EnableRateLimiting("file-search")]
     [HttpGet("trash")]
     [ProducesResponseType(typeof(Result<TrashFileListDto>), StatusCodes.Status200OK)]
     public async Task<ActionResult> GetTrashFiles(
@@ -238,8 +254,9 @@ public class FilesController : ApiControllerBase
             PageSize = pageSize,
             SearchTerm = searchTerm
         };
-        var result = await Sender.Send(query);
-        return HandleResult(result);
+        Response.Headers.CacheControl = "no-store";
+        return await FileSearchHttpResult.ExecuteAsync(async () =>
+            HandleResult(await Sender.Send(query, HttpContext.RequestAborted)), HttpContext.RequestAborted);
     }
 
     /// <summary>

@@ -1,3 +1,4 @@
+﻿using CleanArchCqrs.Application.Common.Exceptions;
 using CleanArchCqrs.Application.Common.Interfaces;
 using CleanArchCqrs.Application.Common.Models;
 using CleanArchCqrs.Application.Features.Files.DTOs;
@@ -6,105 +7,50 @@ using Microsoft.EntityFrameworkCore;
 
 namespace CleanArchCqrs.Application.Features.Files.Queries.GetTenantFiles;
 
-public class GetTenantFilesQueryHandler : IRequestHandler<GetTenantFilesQuery, Result<TenantStorageSummaryDto>>
+public class GetTenantFilesQueryHandler(IApplicationDbContext db, IFileAccessContextResolver resolver,
+    IFileAclQuery acl, IFileAccessService access) : IRequestHandler<GetTenantFilesQuery, Result<TenantStorageSummaryDto>>
 {
-    private readonly IApplicationDbContext _context;
-    private readonly ICurrentUserService _currentUserService;
-
-    public GetTenantFilesQueryHandler(
-        IApplicationDbContext context,
-        ICurrentUserService currentUserService)
-    {
-        _context = context;
-        _currentUserService = currentUserService;
-    }
-
     public async Task<Result<TenantStorageSummaryDto>> Handle(GetTenantFilesQuery request, CancellationToken cancellationToken)
     {
-        var currentUserId = _currentUserService.UserId;
-        if (!currentUserId.HasValue)
+        using var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        deadline.CancelAfter(TimeSpan.FromSeconds(10));
+        var ct = deadline.Token;
+        if (request.PageNumber < 1 || request.PageSize is < 1 or > 100
+            || (long)(request.PageNumber - 1) * request.PageSize > int.MaxValue || request.SearchTerm?.Length > 1000)
+            return Result<TenantStorageSummaryDto>.Failure("INVALID_LIST_REQUEST");
+        var context = await resolver.ResolveContextAsync(ct);
+        if (request.TenantId.HasValue && request.TenantId != context.TenantId)
+            throw new UnauthorizedAccessException();
+        var tenant = await db.Tenants.AsNoTracking().Include(t => t.StorageProvider)
+            .SingleAsync(t => t.Id == context.TenantId, ct);
+        var scope = await acl.ReadScopeAsync(context, DateTimeOffset.UtcNow, ct);
+        if (request.FolderId.HasValue) scope = scope.Where(f => f.FolderId == request.FolderId);
+        if (!string.IsNullOrWhiteSpace(request.SearchTerm))
         {
-            return Result<TenantStorageSummaryDto>.Failure("Bạn chưa xác thực danh tính người dùng.");
+            var pattern = "%" + request.SearchTerm.Trim().Replace("\\", "\\\\").Replace("%", "\\%").Replace("_", "\\_") + "%";
+            scope = scope.Where(f => EF.Functions.Like(f.Name, pattern, "\\"));
         }
-
-        var currentUser = await _context.Users.FirstOrDefaultAsync(u => u.Id == currentUserId.Value && u.IsActive, cancellationToken);
-        if (currentUser == null)
-        {
-            return Result<TenantStorageSummaryDto>.Failure("Người dùng hiện tại không hợp lệ.");
-        }
-
-        var tenantId = _currentUserService.TenantId ?? currentUser.TenantId;
-        if (!tenantId.HasValue)
-        {
-            return Result<TenantStorageSummaryDto>.Failure("Không xác định được tổ chức/tenant.");
-        }
-
-        if (request.TenantId.HasValue && request.TenantId.Value != tenantId.Value)
-        {
-            return Result<TenantStorageSummaryDto>.Failure("Bạn không có quyền xem dữ liệu của tenant khác.");
-        }
-
-        var tenant = await _context.Tenants
-            .Include(t => t.StorageProvider)
-            .FirstOrDefaultAsync(t => t.Id == tenantId.Value, cancellationToken);
-
-        if (tenant == null)
-        {
-            return Result<TenantStorageSummaryDto>.Failure("Tenant không tồn tại.");
-        }
-
-        var query = _context.FileEntries
-            .Include(f => f.Owner)
-            .Include(f => f.StorageProvider)
-            .Where(f => f.TenantId == tenant.Id && !f.IsDeleted);
-
-        if (request.FolderId.HasValue)
-        {
-            query = query.Where(f => f.FolderId == request.FolderId.Value);
-        }
-
-        var files = await query
-            .OrderByDescending(f => f.CreatedAt)
-            .Select(f => new FileEntryDto(
-                f.Id,
-                f.TenantId,
-                f.OwnerId,
-                f.Owner.FirstName + " " + f.Owner.LastName,
-                f.FolderId,
-                f.Name,
-                f.StorageKey,
-                f.ContentType,
-                f.SizeBytes,
-                f.Hash,
-                f.ScanStatus,
-                f.StorageProviderId,
-                f.StorageProvider != null ? f.StorageProvider.Name : null,
-                f.StorageProvider != null ? f.StorageProvider.Type.ToString() : null,
-                f.CreatedAt,
-                null,
-                null
-            ))
-            .ToListAsync(cancellationToken);
-
-        long quota = tenant.StorageQuotaBytes;
-        long used = tenant.StorageUsedBytes;
-        long available = Math.Max(0, quota - used);
-        double usagePercent = quota > 0 ? Math.Round((double)used / quota * 100, 2) : 0;
-
-        var summary = new TenantStorageSummaryDto(
-            tenant.Id,
-            tenant.Name,
-            quota,
-            used,
-            available,
-            usagePercent,
-            tenant.StorageProviderId,
-            tenant.StorageProvider?.Name,
-            tenant.StorageProvider?.Type.ToString(),
-            files
-        );
-
-        return Result<TenantStorageSummaryDto>.Success(summary);
+        var rows = await scope.OrderByDescending(f => f.CreatedAt).ThenBy(f => f.Id)
+            .Skip((request.PageNumber - 1) * request.PageSize).Take(request.PageSize + 1)
+            .Select(f => new { f.Id, f.DocumentVersion }).ToArrayAsync(ct);
+        var grants = await access.CheckManyAsync(context, rows.Select(f => f.Id).ToArray(), ct);
+        var ids = rows.Where(f => grants.TryGetValue(f.Id, out var grant) && grant.DocumentVersion == f.DocumentVersion)
+            .Select(f => f.Id).ToArray();
+        var files = await scope.Where(f => ids.Contains(f.Id)).OrderByDescending(f => f.CreatedAt).ThenBy(f => f.Id)
+            .Select(f => new FileEntryDto(f.Id, f.TenantId, f.OwnerId, f.Owner.FirstName + " " + f.Owner.LastName,
+                f.FolderId, f.Name, "", f.ContentType, f.SizeBytes, null, f.ScanStatus,
+                null, null, null, f.CreatedAt, f.DepartmentId, f.Department != null ? f.Department.Name : null))
+            .ToListAsync(ct);
+        await access.AssertStillValidAsync(context, files.Select(f => grants[f.Id]).ToArray(), ct);
+        if (await resolver.ResolveContextAsync(ct) != context) throw new AuthorizationChangedException();
+        var quota = tenant.StorageQuotaBytes;
+        var used = tenant.StorageUsedBytes;
+        var hasMore = files.Count > request.PageSize;
+        files = files.Take(request.PageSize).ToList();
+        // Preserve DTO shape, but counts are only this authorized page, never hidden candidates.
+        return Result<TenantStorageSummaryDto>.Success(new(tenant.Id, tenant.Name, quota, used,
+            Math.Max(0, quota - used), quota > 0 ? Math.Round((double)used / quota * 100, 2) : 0,
+            tenant.StorageProviderId, tenant.StorageProvider?.Name, tenant.StorageProvider?.Type.ToString(),
+            files, files.Count, request.PageNumber, request.PageSize, hasMore));
     }
 }
-

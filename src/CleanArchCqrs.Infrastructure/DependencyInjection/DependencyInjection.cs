@@ -59,6 +59,9 @@ namespace CleanArchCqrs.Infrastructure.DependencyInjection
             services.AddScoped<IFileAclQuery, FileAclQuery>();
             services.AddScoped<IFileAccessService, FileAccessService>();
             services.AddScoped<IKeywordSearchService, MySqlKeywordSearchService>();
+            services.AddDataProtection();
+            services.AddScoped<ISearchSessionStore, SearchSessionStore>();
+            services.AddScoped<CleanArchCqrs.Application.Features.Files.Queries.SearchFiles.SearchCandidateReader>();
             services.AddOptions<DocumentIndexOptions>().Bind(configuration.GetSection("SearchIndex"))
                 .Validate(o => o.MaxScanBytes > 0 && o.MaxScanBytes < 2L * 1024 * 1024 * 1024
                     && o.ScanTimeoutSeconds is >= 1 and <= 86400 && o.RetentionMinutes >= 10

@@ -39,6 +39,7 @@
 
   <ItemGroup>
     <EmbeddedResource Include="Security\Scripts\*.lua" />
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
   </ItemGroup>
 
 </Project>

@@ -120,6 +120,21 @@ public sealed class RedisSecurityClient : ISecurityRedis, IDisposable
 
     public void Dispose() => _multiplexer.Dispose();
 
+    internal Task SetSearchSessionAsync(Guid id, string value, TimeSpan ttl, CancellationToken ct) =>
+        RunRedisCommandAsync(async () =>
+        {
+            if (!await _database.StringSetAsync($"clouddms:search:session:v1:{id:N}", value, ttl, When.NotExists))
+                throw new RedisException("Search session could not be stored.");
+            return true;
+        }, ct);
+
+    internal Task<string?> GetSearchSessionAsync(Guid id, CancellationToken ct) =>
+        RunRedisCommandAsync(async () =>
+        {
+            var value = await _database.StringGetAsync($"clouddms:search:session:v1:{id:N}");
+            return value.IsNull ? null : value.ToString();
+        }, ct);
+
     private async Task<T> RunRedisCommandAsync<T>(
         Func<Task<T>> operation,
         CancellationToken cancellationToken)
