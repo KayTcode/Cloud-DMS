@@ -47,3 +47,6 @@ BenchmarkDotNet.Artifacts/
 *.vspscc
 *.vssscc
 deploy/.local/
+
+services/embedding/model/
+services/embedding/__pycache__/

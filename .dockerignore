@@ -1,0 +1,7 @@
+.git
+.superpowers
+sdd
+**/bin
+**/obj
+services/embedding/model
+**/__pycache__

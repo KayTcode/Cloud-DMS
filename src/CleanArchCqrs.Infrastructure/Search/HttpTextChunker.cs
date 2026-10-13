@@ -9,7 +9,12 @@ public sealed class HttpTextChunker(HttpClient client, IOptions<DocumentIndexOpt
 {
     public async Task<ChunkingResult> ChunkAsync(IReadOnlyList<TextSection> sections, CancellationToken ct)
     {
-        // Task 8 implements this on the internal model service with the pinned real tokenizer.
+        if (sections.Count > 1000 || sections.Sum(s => (long)s.Text.Length) > DocumentIndexOptions.MaxCharacters
+            || sections.Any(s => s.Location?.Length > 500)) throw new ArgumentException("TOKENIZER_REQUEST_LIMIT");
+        using var deadline = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        deadline.CancelAfter(TimeSpan.FromSeconds(120));
+        ct = deadline.Token;
+        // Internal service uses the pinned real tokenizer; there is no heuristic fallback.
         using var request = new HttpRequestMessage(HttpMethod.Post, new Uri(new Uri(options.Value.TokenizerEndpoint), "chunk"))
         {
             Content = JsonContent.Create(new { modelVersion = options.Value.ModelVersion, sections, targetTokens = 300, overlapTokens = 50,
@@ -40,14 +45,4 @@ public sealed class HttpTextChunker(HttpClient client, IOptions<DocumentIndexOpt
         return result;
     }
     public void Dispose() => client.Dispose();
-}
-
-public sealed class UnavailableDocumentIndexSink : IDocumentIndexSink
-{
-    public Task StageAsync(Guid generationId, CancellationToken ct) =>
-        Task.FromException(new InvalidOperationException("INDEX_SINK_UNAVAILABLE"));
-    public Task DeleteAsync(Guid tenantId, Guid fileId, CancellationToken ct) =>
-        Task.FromException(new InvalidOperationException("INDEX_SINK_UNAVAILABLE"));
-    public Task DeleteGenerationAsync(Guid tenantId, Guid fileId, Guid generationId, CancellationToken ct) =>
-        Task.FromException(new InvalidOperationException("INDEX_SINK_UNAVAILABLE"));
 }

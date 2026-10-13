@@ -24,6 +24,10 @@ namespace CleanArchCqrs.Infrastructure.DependencyInjection
 {
     public static class DependencyInjection
     {
+        private static bool ValidInternalEndpoint(string value) => Uri.TryCreate(value, UriKind.Absolute, out var uri)
+            && uri.Scheme is "http" or "https" && string.IsNullOrEmpty(uri.UserInfo)
+            && string.IsNullOrEmpty(uri.Query) && string.IsNullOrEmpty(uri.Fragment) && uri.AbsolutePath.EndsWith('/');
+
         public static IServiceCollection AddInfrastructureServices(
          this IServiceCollection services,
          IConfiguration configuration)
@@ -60,12 +64,26 @@ namespace CleanArchCqrs.Infrastructure.DependencyInjection
                     && o.ScanTimeoutSeconds is >= 1 and <= 86400 && o.RetentionMinutes >= 10
                     && Uri.TryCreate(o.TokenizerEndpoint, UriKind.Absolute, out var endpoint)
                     && endpoint.Scheme is "http" or "https" && string.IsNullOrEmpty(endpoint.UserInfo)
-                    && !string.IsNullOrWhiteSpace(o.ModelVersion) && o.ModelVersion.Length <= 128,
+                    && o.ModelVersion == EmbeddingOptions.PinnedModel,
                     "Invalid SearchIndex limits or internal tokenizer endpoint.").ValidateOnStart();
             services.AddScoped<IFileTextExtractor, CleanArchCqrs.Infrastructure.Search.Extraction.FileTextExtractor>();
-            services.AddScoped<ITextChunker>(sp => new HttpTextChunker(new HttpClient { Timeout = TimeSpan.FromSeconds(120) },
+            services.AddScoped<ITextChunker>(sp => new HttpTextChunker(new HttpClient(new HttpClientHandler { AllowAutoRedirect = false, UseProxy = false }) { Timeout = TimeSpan.FromSeconds(120) },
                 sp.GetRequiredService<IOptions<DocumentIndexOptions>>()));
-            services.AddScoped<IDocumentIndexSink, UnavailableDocumentIndexSink>();
+            services.AddOptions<EmbeddingOptions>().Bind(configuration.GetSection("Embedding"))
+                .Validate(o => o.ModelVersion == EmbeddingOptions.PinnedModel && o.BatchSize is >= 1 and <= 16
+                    && o.TimeoutSeconds is >= 1 and <= 120 && ValidInternalEndpoint(o.Endpoint), "Invalid Embedding options.").ValidateOnStart();
+            services.AddOptions<QdrantOptions>().Bind(configuration.GetSection("Qdrant"))
+                .Validate(o => o.TimeoutSeconds is >= 1 and <= 120 && ValidInternalEndpoint(o.Endpoint), "Invalid Qdrant options.").ValidateOnStart();
+            services.AddSingleton<IEmbeddingService>(sp => new InternalEmbeddingService(
+                new HttpClient(new SocketsHttpHandler { AllowAutoRedirect = false, UseProxy = false, PooledConnectionLifetime = TimeSpan.FromMinutes(5) })
+                { Timeout = TimeSpan.FromSeconds(sp.GetRequiredService<IOptions<EmbeddingOptions>>().Value.TimeoutSeconds), MaxResponseContentBufferSize = 1024 * 1024 },
+                sp.GetRequiredService<IOptions<EmbeddingOptions>>()));
+            services.AddSingleton<QdrantVectorSearchService>(sp => new QdrantVectorSearchService(
+                new HttpClient(new SocketsHttpHandler { AllowAutoRedirect = false, UseProxy = false, PooledConnectionLifetime = TimeSpan.FromMinutes(5) })
+                { Timeout = TimeSpan.FromSeconds(sp.GetRequiredService<IOptions<QdrantOptions>>().Value.TimeoutSeconds), MaxResponseContentBufferSize = 4 * 1024 * 1024 },
+                sp.GetRequiredService<IOptions<QdrantOptions>>(), sp.GetRequiredService<IOptions<EmbeddingOptions>>()));
+            services.AddSingleton<IVectorSearchService>(sp => sp.GetRequiredService<QdrantVectorSearchService>());
+            services.AddScoped<IDocumentIndexSink, QdrantDocumentIndexSink>();
             services.AddScoped<DocumentIndexProcessor>();
             services.AddHostedService<DocumentIndexWorker>();
             services.AddHostedService<DocumentReconciliationWorker>();
