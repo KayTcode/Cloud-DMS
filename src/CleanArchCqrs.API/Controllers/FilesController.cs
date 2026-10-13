@@ -154,14 +154,14 @@ public class FilesController : ApiControllerBase
     /// <summary>
     /// Chuyển tệp tin vào thùng rác (Soft Delete). Chưa xóa vật lý trên Cloud và chưa giải phóng Quota.
     /// </summary>
-    [Authorize(Policy = "file.delete")]
+    [Authorize]
     [HttpDelete("{id:guid}")]
-    [ProducesResponseType(typeof(Result<bool>), StatusCodes.Status200OK)]
-    public async Task<ActionResult> DeleteFile([FromRoute] Guid id)
+    [ProducesResponseType(typeof(OperationStatusResponse), StatusCodes.Status202Accepted)]
+    [ProducesResponseType(typeof(OperationStatusResponse), StatusCodes.Status200OK)]
+    public async Task<ActionResult> DeleteFile([FromRoute] Guid id, [FromHeader(Name="Idempotency-Key")] string idempotencyKey)
     {
-        var command = new DeleteFileCommand(id);
-        var result = await Sender.Send(command);
-        return HandleResult(result);
+        var command = new DeleteFileCommand(id,idempotencyKey);
+        return await FileMutationHttpResult.ExecuteAsync(()=>Sender.Send(command,HttpContext.RequestAborted));
     }
 
     /// <summary>
@@ -192,26 +192,26 @@ public class FilesController : ApiControllerBase
     /// <summary>
     /// Khôi phục tệp tin từ thùng rác trở lại danh sách hoạt động.
     /// </summary>
-    [Authorize(Policy = "file.upload")]
+    [Authorize]
     [HttpPost("{id:guid}/restore")]
-    [ProducesResponseType(typeof(Result<bool>), StatusCodes.Status200OK)]
-    public async Task<ActionResult> RestoreFile([FromRoute] Guid id)
+    [ProducesResponseType(typeof(OperationStatusResponse), StatusCodes.Status202Accepted)]
+    [ProducesResponseType(typeof(OperationStatusResponse), StatusCodes.Status200OK)]
+    public async Task<ActionResult> RestoreFile([FromRoute] Guid id, [FromHeader(Name="Idempotency-Key")] string idempotencyKey)
     {
-        var command = new RestoreFileCommand(id);
-        var result = await Sender.Send(command);
-        return HandleResult(result);
+        var command = new RestoreFileCommand(id,idempotencyKey);
+        return await FileMutationHttpResult.ExecuteAsync(()=>Sender.Send(command,HttpContext.RequestAborted));
     }
 
     /// <summary>
     /// Xóa vĩnh viễn tệp tin khỏi Cloud Storage và giải phóng Quota.
     /// </summary>
-    [Authorize(Policy = "file.delete")]
+    [Authorize]
     [HttpDelete("{id:guid}/permanent")]
-    [ProducesResponseType(typeof(Result<bool>), StatusCodes.Status200OK)]
-    public async Task<ActionResult> PermanentDeleteFile([FromRoute] Guid id)
+    [ProducesResponseType(typeof(OperationStatusResponse), StatusCodes.Status202Accepted)]
+    [ProducesResponseType(typeof(OperationStatusResponse), StatusCodes.Status200OK)]
+    public async Task<ActionResult> PermanentDeleteFile([FromRoute] Guid id, [FromHeader(Name="Idempotency-Key")] string idempotencyKey)
     {
-        var command = new PermanentDeleteFileCommand(id);
-        var result = await Sender.Send(command);
-        return HandleResult(result);
+        var command = new PermanentDeleteFileCommand(id,idempotencyKey);
+        return await FileMutationHttpResult.ExecuteAsync(()=>Sender.Send(command,HttpContext.RequestAborted));
     }
 }

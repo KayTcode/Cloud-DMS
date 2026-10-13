@@ -51,6 +51,9 @@ namespace CleanArchCqrs.Infrastructure.DependencyInjection
             services.AddScoped<IJwtTokenService, JwtTokenService>();
             services.AddScoped<IAuthSessionService, AuthSessionService>();
             services.AddScoped<IFileAccessContextResolver, FileAccessContextResolver>();
+            services.AddScoped<IFileAclQuery, FileAclQuery>();
+            services.AddScoped<IFileAccessService, FileAccessService>();
+            services.AddScoped<CleanArchCqrs.Application.Features.Files.Commands.ManageAccess.FileMutationService>();
             services.AddScoped<IGoogleAuthService>(provider =>
                 new GoogleAuthService(
                     new HttpClient(),

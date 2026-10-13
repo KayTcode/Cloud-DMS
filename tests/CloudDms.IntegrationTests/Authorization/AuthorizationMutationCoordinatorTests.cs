@@ -39,7 +39,7 @@ public sealed class AuthorizationMutationCoordinatorTests(
         var scopeKey = $"tenant:{scopeId:N}";
         var redisScopeKey = $"dms:scope:tenant:{scopeId:N}";
         var previousSnapshot = JsonSerializer.Serialize(
-            new { version = 1L, updating = false, complete = true },
+            new { version = 0L, updating = false, complete = true },
             JsonOptions);
         await redisFixture.SetStringAsync(redisScopeKey, previousSnapshot);
 
@@ -93,7 +93,7 @@ public sealed class AuthorizationMutationCoordinatorTests(
 
         await redisFixture.SetStringAsync(
             redisScopeKey,
-            JsonSerializer.Serialize(new { version = 1L, updating = false, complete = true }, JsonOptions));
+            JsonSerializer.Serialize(new { version = 0L, updating = false, complete = true }, JsonOptions));
 
         var coordinator = new AuthorizationMutationCoordinator(
             dbContext,

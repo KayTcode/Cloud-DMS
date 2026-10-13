@@ -93,7 +93,7 @@ public sealed class AuthorizationMutationCoordinator(
                 scope = new AuthorizationScope
                 {
                     ScopeKey = request.ScopeKey,
-                    Version = 1
+                    Version = 0
                 };
                 dbContext.AuthorizationScopes.Add(scope);
             }

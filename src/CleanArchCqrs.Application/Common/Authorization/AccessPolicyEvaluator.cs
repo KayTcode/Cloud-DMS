@@ -52,15 +52,17 @@ public sealed class AccessPolicyEvaluator
         }
 
         var owner = input.Resource?.OwnerId == input.User.UserId;
-        var grant = input.Grants.FirstOrDefault(candidate => candidate.UserId == input.User.UserId);
-        var validGrant = grant is not null && (!grant.ExpiresAt.HasValue || grant.ExpiresAt.Value > input.ServerTime);
+        var grants = input.Grants.Where(candidate => candidate.UserId == input.User.UserId
+            && (!candidate.ExpiresAt.HasValue || candidate.ExpiresAt.Value > input.ServerTime)).ToArray();
 
         var allowed = action switch
         {
-            PermissionNames.FileRead => CanAccessContent(input, resource, action, owner || (validGrant && grant!.CanRead)),
-            PermissionNames.FileUpdate => CanAccessContent(input, resource, action, owner || (validGrant && grant!.CanWrite)),
-            PermissionNames.FileDelete => CanAccessContent(input, resource, action, owner || (validGrant && grant!.CanDelete)),
-            PermissionNames.FileShare => CanAccessContent(input, resource, action, owner),
+            PermissionNames.FileRead => CanAccessContent(input, resource, action, owner || grants.Any(grant => grant.CanRead)),
+            PermissionNames.FileUpdate => CanAccessContent(input, resource, action, owner || grants.Any(grant => grant.CanWrite)),
+            PermissionNames.FileDelete => CanAccessContent(input, resource, action, owner || grants.Any(grant => grant.CanDelete)),
+            PermissionNames.FileShare => CanAccessContent(input, resource, action, owner || grants.Any(grant => grant.CanShare)),
+            PermissionNames.FileRestore or PermissionNames.FilePurge => resource is { Lifecycle: FileLifecycle.Binned }
+                && (owner || grants.Any(grant => grant.CanDelete)) && HasPermission(input.User, PermissionNames.FileDelete),
             PermissionNames.FileMetadataRead => IsTenantAdmin(input.User) && HasPermission(input.User, action),
             PermissionNames.BinPurge => HasRole(input.User, TenantAdminRole)
                 && resource is { Lifecycle: FileLifecycle.Binned }

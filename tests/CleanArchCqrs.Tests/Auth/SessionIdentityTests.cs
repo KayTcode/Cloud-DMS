@@ -96,4 +96,13 @@ public class SessionIdentityTests
         var user = new User(Guid.NewGuid(), null, "test@example.test", "hash", "Test", "User", null);
         Assert.Throws<ArgumentException>(() => service.GenerateAccessToken(user, "Employee", Array.Empty<string>()));
     }
-}
+    [Fact] public async Task ReceiptContextAllowsPendingButNeverBlockedSessionOrIncompleteSnapshot()
+    {
+        using var db=TestDbContextFactory.Create();var id=Guid.NewGuid();var sid=Guid.NewGuid();var tenant=Guid.NewGuid();db.RefreshTokens.Add(new(sid,id,"hash",DateTime.UtcNow.AddHours(1),null));await db.SaveChangesAsync();
+        var current=new Mock<ICurrentUserService>();current.SetupGet(c=>c.IsAuthenticated).Returns(true);current.SetupGet(c=>c.UserId).Returns(id);current.SetupGet(c=>c.SessionId).Returns(sid);
+        var input=new AccessEvaluationInput(new(id,tenant,null,true,1,new HashSet<string>(),new HashSet<string>()),new(sid,id,true,DateTimeOffset.UtcNow.AddHours(1),1,true),null,Array.Empty<ShareGrant>(),new[]{new ScopeAccessSnapshot("dms:scope:global",1,true,true)},true,DateTimeOffset.UtcNow,"g",new("none",null));
+        var snapshots=new Mock<IAccessSnapshotStore>();snapshots.Setup(s=>s.ReadAsync(It.IsAny<ActorIdentity>(),It.IsAny<AuthorizationTarget>(),It.IsAny<CancellationToken>())).Returns(()=>Task.FromResult(input));var resolver=new FileAccessContextResolver(current.Object,db,snapshots.Object);
+        Assert.Equal(tenant,(await resolver.ResolveContextForMutationReceiptAsync(default)).TenantId);await Assert.ThrowsAsync<SecurityUnavailableException>(()=>resolver.ResolveContextAsync(default));
+        input=input with{Session=input.Session! with{IsActive=false}};await Assert.ThrowsAsync<UnauthorizedAccessException>(()=>resolver.ResolveContextForMutationReceiptAsync(default));
+        input=input with{SnapshotsComplete=false};await Assert.ThrowsAsync<SecurityUnavailableException>(()=>resolver.ResolveContextForMutationReceiptAsync(default));
+    }}

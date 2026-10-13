@@ -50,7 +50,8 @@ public sealed record ShareGrant(
     bool CanRead,
     bool CanWrite,
     bool CanDelete,
-    DateTimeOffset? ExpiresAt);
+    DateTimeOffset? ExpiresAt,
+    bool CanShare = false);
 
 public sealed record SessionAccessSnapshot(
     Guid SessionId,
