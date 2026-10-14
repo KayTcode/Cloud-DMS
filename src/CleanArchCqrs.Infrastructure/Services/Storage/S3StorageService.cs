@@ -125,8 +125,7 @@ public sealed class S3StorageService : IStorageService, IMultipartObjectStorage,
                 BucketName = _settings.Bucket, Key = key, UploadId = uploadId
             }, cancellationToken);
         }
-        catch (AmazonS3Exception ex) when (ex.ErrorCode == "NoSuchUpload"
-            || ex.StatusCode == System.Net.HttpStatusCode.NotFound)
+        catch (AmazonS3Exception ex) when (ex.ErrorCode == "NoSuchUpload")
         {
             // Another abort or a completed upload already removed the multipart handle.
         }

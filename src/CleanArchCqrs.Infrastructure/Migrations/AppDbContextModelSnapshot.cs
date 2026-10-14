@@ -22,37 +22,6 @@ namespace CleanArchCqrs.Infrastructure.Persistence.Migrations
 
             MySqlModelBuilderExtensions.AutoIncrementColumns(modelBuilder);
 
-            modelBuilder.Entity("CleanArchCqrs.Domain.Entities.Product", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("char(36)");
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("datetime(6)");
-
-                    b.Property<string>("Description")
-                        .IsRequired()
-                        .HasColumnType("longtext");
-
-                    b.Property<string>("Name")
-                        .IsRequired()
-                        .HasColumnType("longtext");
-
-                    b.Property<decimal>("Price")
-                        .HasColumnType("decimal(65,30)");
-
-                    b.Property<int>("StockQuantity")
-                        .HasColumnType("int");
-
-                    b.Property<DateTime?>("UpdatedAt")
-                        .HasColumnType("datetime(6)");
-
-                    b.HasKey("Id");
-
-                    b.ToTable("Products");
-                });
-
             modelBuilder.Entity("CleanArchCqrs.Domain.Entities.AuditLog", b =>
                 {
                     b.Property<Guid>("Id")
@@ -251,8 +220,8 @@ namespace CleanArchCqrs.Infrastructure.Persistence.Migrations
                         .HasColumnType("bigint")
                         .HasDefaultValue(0L);
 
-                    b.Property<long>("StorageQuotaBytes").HasColumnType("bigint");
-                    b.Property<long>("StorageUsedBytes").HasColumnType("bigint");
+                    b.Property<long>("LegacyStorageQuotaBytes").ValueGeneratedOnAdd().HasColumnType("bigint").HasColumnName("StorageQuotaBytes").HasDefaultValue(0L);
+                    b.Property<long>("LegacyStorageUsedBytes").ValueGeneratedOnAdd().HasColumnType("bigint").HasColumnName("StorageUsedBytes").HasDefaultValue(0L);
 
                     b.HasKey("Id");
 
@@ -1899,6 +1868,15 @@ namespace CleanArchCqrs.Infrastructure.Persistence.Migrations
                         .HasForeignKey("TenantId")
                         .OnDelete(DeleteBehavior.Restrict);
 
+                    b.Navigation("Tenant");
+                });
+
+            modelBuilder.Entity("CleanArchCqrs.Domain.Entities.Role", b =>
+                {
+                    b.HasOne("CleanArchCqrs.Domain.Entities.Tenant", "Tenant")
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.Restrict);
                     b.Navigation("Tenant");
                 });
 

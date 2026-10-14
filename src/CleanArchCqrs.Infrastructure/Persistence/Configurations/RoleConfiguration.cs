@@ -19,6 +19,8 @@ public class RoleConfiguration : IEntityTypeConfiguration<Role>
         builder.Property(r => r.Description)
             .HasMaxLength(500);
 
+        builder.HasIndex(r => r.Name).IsUnique();
+
         builder.HasIndex(r => new { r.TenantId, r.Name })
             .IsUnique();
 

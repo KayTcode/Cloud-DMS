@@ -18,6 +18,7 @@ RUN dotnet publish "CleanArchCqrs.API.csproj" -c Release -o /app/publish --no-re
 # Stage 2: Production Runtime (Non-root user)
 FROM mcr.microsoft.com/dotnet/aspnet:8.0 AS runtime
 WORKDIR /app
+RUN apt-get update && apt-get install -y --no-install-recommends poppler-utils bubblewrap util-linux && rm -rf /var/lib/apt/lists/*
 
 ENV ASPNETCORE_HTTP_PORTS=8080 \
     ASPNETCORE_ENVIRONMENT=Production

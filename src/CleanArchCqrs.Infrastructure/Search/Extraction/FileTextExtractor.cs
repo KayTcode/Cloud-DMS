@@ -204,16 +204,23 @@ public sealed class FileTextExtractor(IOptions<DocumentIndexOptions> options) : 
 
     private async Task<TextExtractionResult> PdfAsync(Stream content, CancellationToken ct)
     {
-        // Poppler runs as a cancellable child process. No shell or document-controlled arguments.
+        // Never run native document parsers without a separate network namespace.
+        if (!OperatingSystem.IsLinux() || (!File.Exists("/usr/bin/bwrap") || !File.Exists("/usr/bin/prlimit")))
+            return new("application/octet-stream", [], true, "PDF_SANDBOX_UNAVAILABLE");
         var path = Path.Combine(Path.GetTempPath(), $"dms-{Guid.NewGuid():N}.pdf");
         try
         {
             await using (var output = new FileStream(path, FileMode.CreateNew, FileAccess.Write, FileShare.None))
                 await content.CopyToAsync(output, ct);
-            var start = new ProcessStartInfo(options.Value.PdfTextExecutable)
+            var start = new ProcessStartInfo("/usr/bin/prlimit")
             { UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true, RedirectStandardError = true,
                 StandardOutputEncoding = Encoding.UTF8 };
-            foreach (var arg in new[] { "-enc", "UTF-8", "-layout", "-f", "1", "-l", "1001", path, "-" }) start.ArgumentList.Add(arg);
+            foreach (var arg in new[] { "--as=536870912:536870912", "--cpu=115:115", "--core=0:0", "--nofile=128:128", "--",
+                "/usr/bin/bwrap", "--unshare-all", "--die-with-parent", "--new-session", "--cap-drop", "ALL",
+                "--ro-bind", "/usr", "/usr", "--ro-bind", "/lib", "/lib", "--ro-bind-try", "/lib64", "/lib64",
+                "--proc", "/proc", "--dev", "/dev", "--tmpfs", "/tmp", "--ro-bind", path, "/input.pdf",
+                "--clearenv", "--setenv", "PATH", "/usr/bin", "--", options.Value.PdfTextExecutable }) start.ArgumentList.Add(arg);
+            foreach (var arg in new[] { "-enc", "UTF-8", "-layout", "-f", "1", "-l", "1001", "/input.pdf", "-" }) start.ArgumentList.Add(arg);
             using var process = Process.Start(start) ?? throw new InvalidOperationException("PDF_EXTRACTOR_UNAVAILABLE");
             using var kill = ct.Register(() => { try { if (!process.HasExited) process.Kill(true); } catch (InvalidOperationException) { } });
             var textTask = ReadBoundedTextAsync(process.StandardOutput, ct);
@@ -229,7 +236,7 @@ public sealed class FileTextExtractor(IOptions<DocumentIndexOptions> options) : 
                 }
                 var text = await textTask;
                 await errorTask; // Drain only; parser stderr may contain document data and is never logged.
-                if (process.ExitCode != 0) throw new InvalidDataException();
+                if (process.ExitCode != 0) return new("application/octet-stream", [], true, "PDF_SANDBOX_OR_PARSER_FAILED");
                 var pages = text.Split('\f');
                 var sections = pages.Take(DocumentIndexOptions.MaxPages).Select((p, i) => new TextSection(p, $"page:{i + 1}"))
                     .Where(s => !string.IsNullOrWhiteSpace(s.Text)).ToArray();
@@ -243,6 +250,7 @@ public sealed class FileTextExtractor(IOptions<DocumentIndexOptions> options) : 
                 await process.WaitForExitAsync(CancellationToken.None);
             }
         }
+        catch (System.ComponentModel.Win32Exception) { return new("application/octet-stream", [], true, "PDF_SANDBOX_UNAVAILABLE"); }
         finally { File.Delete(path); }
     }
 }

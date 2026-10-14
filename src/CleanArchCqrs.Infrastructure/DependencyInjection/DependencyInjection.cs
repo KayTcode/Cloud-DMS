@@ -38,7 +38,11 @@ namespace CleanArchCqrs.Infrastructure.DependencyInjection
             services.Configure<GoogleAuthOptions>(configuration.GetSection("GoogleAuth"));
             services.AddScoped<IPasswordHasher, PasswordHasher>();
 
-            services.Configure<RedisOptions>(configuration.GetSection(RedisOptions.SectionName));
+            services.AddOptions<RedisOptions>().Bind(configuration.GetSection(RedisOptions.SectionName))
+                .Validate(o => !string.IsNullOrWhiteSpace(o.ConnectionString)
+                    && o.CommandTimeoutMilliseconds is >= 1 and <= 30000
+                    && o.ConnectTimeoutMilliseconds is >= 1 and <= 30000
+                    && o.CircuitFailureThreshold >= 1 && o.CircuitOpenMilliseconds >= 1, "Invalid security Redis configuration.").ValidateOnStart();
             services.AddSingleton<RedisSecurityClient>();
             services.AddSingleton<ISecurityRedis>(provider =>
                 provider.GetRequiredService<RedisSecurityClient>());

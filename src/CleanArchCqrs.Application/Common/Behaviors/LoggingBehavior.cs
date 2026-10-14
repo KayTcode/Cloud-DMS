@@ -55,10 +55,8 @@ public class LoggingBehavior<TRequest, TResponse> : IPipelineBehavior<TRequest, 
                 throw;
             }
 
-            _logger.LogError(
-                ex,
-                "[{CorrelationId}] Request {RequestName} failed after {ElapsedMilliseconds}ms with error: {ErrorMessage}",
-                correlationId, requestName, stopwatch.ElapsedMilliseconds, ex.Message);
+            _logger.LogError("[{CorrelationId}] Request {RequestName} failed after {ElapsedMilliseconds}ms ({ExceptionType})",
+                correlationId, requestName, stopwatch.ElapsedMilliseconds, ex.GetType().Name);
 
             throw;
         }

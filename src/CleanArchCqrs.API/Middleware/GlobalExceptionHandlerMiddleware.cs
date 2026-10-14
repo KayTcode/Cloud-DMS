@@ -39,7 +39,7 @@ public class GlobalExceptionHandlerMiddleware
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Unhandled exception occurred while processing {Path}", context.Request.Path);
+            _logger.LogError("Unhandled {ExceptionType} while processing {Path}", ex.GetType().Name, context.Request.Path);
             await WriteProblemDetailsAsync(context, ex);
         }
     }
@@ -70,7 +70,7 @@ public class GlobalExceptionHandlerMiddleware
                 StatusCodes.Status503ServiceUnavailable => "Security dependency unavailable",
                 _ => "Internal server error"
             },
-            Detail = exception.Message,
+            Detail = "Request could not be completed.",
             Instance = context.Request.Path
         };
 
@@ -102,6 +102,8 @@ public class GlobalExceptionHandlerMiddleware
         context.Response.Clear();
         context.Response.StatusCode = statusCode;
         context.Response.ContentType = "application/problem+json";
+        context.Response.Headers.CacheControl = "no-store";
+        context.Response.Headers["X-Content-Type-Options"] = "nosniff";
         await context.Response.WriteAsJsonAsync(problem);
     }
 }

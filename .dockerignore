@@ -5,3 +5,9 @@ sdd
 **/obj
 services/embedding/model
 **/__pycache__
+
+.worktrees
+tests
+review
+**/TestResults
+**/appsettings.Development.json

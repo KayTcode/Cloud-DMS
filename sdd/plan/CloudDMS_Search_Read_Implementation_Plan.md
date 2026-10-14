@@ -211,3 +211,9 @@ Interface đều nhận `CancellationToken`; kiểu DTO API tách khỏi entity 
 | API lỗi/rate limit, cấu hình, vận hành và acceptance/benchmark | 11–12 |
 
 Dependency: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 → 9 → 10 → 11 → 12. Schema/context là contracts dùng chung; mỗi reviewer kiểm consumer ở task sau khớp producer. Các task đều kiểm fail/pass/commit/report; không gắn completion Release 1 cho keyword-only hoặc adapter không chạy thật.
+
+## Điều chỉnh thứ tự theo yêu cầu người dùng
+
+Ngày 13/10/2026: hoàn thiện code Task 4–11 trước; chưa viết hoặc chạy thêm test trong giai đoạn này. Giữ các test đã có. Review tĩnh và build vẫn thực hiện khi cần. Sau khi code hoàn tất, thực hiện toàn bộ kiểm thử còn thiếu của từng task cùng Task 12 và benchmark. Phần chưa chạy test được ghi rõ là chưa kiểm chứng.
+
+Người dùng chọn giữ ClamAV: file vượt giới hạn quét đáng tin cậy vẫn được lưu, nhưng chờ xác minh và không được đọc hoặc công bố index sạch. Không tăng cấu hình ClamAV để giả định quét được hàng chục GiB. Giới hạn upload, phân tích và quét là ba giới hạn riêng.

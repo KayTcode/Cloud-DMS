@@ -15,7 +15,13 @@ public sealed class DocumentIndexWorker(IServiceScopeFactory scopes, IOptions<Do
 {
     protected override async Task ExecuteAsync(CancellationToken ct)
     {
-        if (!options.Value.Enabled) return;
+        if (!options.Value.Enabled)
+        {
+            logger.LogWarning("Document indexing and preview processing disabled by configuration.");
+            return;
+        }
+        if (!options.Value.ClamAvCoverageConfirmed)
+            logger.LogWarning("Scan coverage unconfirmed; new documents remain awaiting verification.");
         while (!ct.IsCancellationRequested)
         {
             try
