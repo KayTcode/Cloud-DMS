@@ -54,7 +54,7 @@ public class GlobalExceptionHandlerMiddleware
             UnauthorizedAccessException => StatusCodes.Status401Unauthorized,
             SecurityUnavailableException => StatusCodes.Status503ServiceUnavailable,
             KeyNotFoundException => StatusCodes.Status404NotFound,
-            InvalidOperationException => StatusCodes.Status400BadRequest,
+            FluentValidation.ValidationException or InvalidOperationException => StatusCodes.Status400BadRequest,
             _ => StatusCodes.Status500InternalServerError
         };
 

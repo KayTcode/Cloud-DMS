@@ -1,4 +1,4 @@
-﻿# Bảo mật Cloud DMS
+# Bảo mật Cloud DMS
 
 ## Đã triển khai trong mã
 
@@ -14,7 +14,7 @@
 
 ## Giới hạn và công việc dự kiến
 
-Mã Task11 mới kiểm biên dịch/tĩnh, chưa chứng minh runtime, DB nâng cấp, sandbox/isolation, provider private policy/Range/CORS, regression API hay benchmark. Các luồng quản trị chưa chuyển hết; không khẳng định tenant isolation hoàn chỉnh ngoài phạm vi read/search đã viết. AES cấu hình provider còn giữ format/tương thích cũ; thay khóa cần quy trình tái mã hóa, không đổi mù trên DB hiện hữu. Development key ring tạm thời không dùng cho production. Certificate rotation/secret backup phải được vận hành kiểm soát; không xóa key ring khi rollback.
+Task12 đã kiểm runtime giới hạn, DB sạch/nâng cấp, MinIO private/Range, ACL/session và HTTP bằng tài nguyên test riêng; [báo cáo](docs/search-read-validation.md) phân biệt pass, fail closed và chưa kiểm. Chưa chứng minh ClamAV engine thật, PDF/Office sandbox thành công/layout, CORS/proxy deployment hoặc tải production. Các luồng quản trị chưa chuyển hết; không khẳng định tenant isolation hoàn chỉnh ngoài phạm vi read/search đã viết. AES cấu hình provider còn giữ format/tương thích cũ; thay khóa cần quy trình tái mã hóa, không đổi mù trên DB hiện hữu. Development key ring tạm thời không dùng cho production. Certificate rotation/secret backup phải được vận hành kiểm soát; không xóa key ring khi rollback.
 
 Qdrant pin digest; các base image/package khác chưa chốt digest toàn chuỗi. Network backend private không thay thế auth/service segmentation và sandbox child. Host Docker/AppArmor/seccomp có thể chặn user namespaces: phải fail closed, chưa được coi ready. PDF dùng network namespace và filter runtime kế thừa, không có BPF socket-deny riêng như converter; cgroup memory512 MiB riêng PDF chưa triển khai (watchdog child và cgroup toàn API2 GiB).
 

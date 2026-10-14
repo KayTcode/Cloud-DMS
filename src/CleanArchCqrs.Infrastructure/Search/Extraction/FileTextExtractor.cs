@@ -37,7 +37,22 @@ public sealed class FileTextExtractor(IOptions<DocumentIndexOptions> options) : 
                 return await OfficeAsync(content, ct);
             if (Path.GetExtension(fileName).ToLowerInvariant() is ".txt" or ".csv" or ".md" or ".markdown")
             {
-                using var reader = new StreamReader(content, new UTF8Encoding(false, true), true, 8192, true);
+                // StreamReader's automatic BOM detection replaces a strict decoder with
+                // permissive UTF-16/32 encodings. Select a strict decoder for every BOM.
+                Encoding encoding = new UTF8Encoding(false, true);
+                var preamble = 0;
+                if (count >= 4 && magic.AsSpan(0, 4).SequenceEqual(new byte[] { 255, 254, 0, 0 }))
+                { encoding = new UTF32Encoding(false, false, true); preamble = 4; }
+                else if (count >= 4 && magic.AsSpan(0, 4).SequenceEqual(new byte[] { 0, 0, 254, 255 }))
+                { encoding = new UTF32Encoding(true, false, true); preamble = 4; }
+                else if (count >= 2 && magic[0] == 255 && magic[1] == 254)
+                { encoding = new UnicodeEncoding(false, false, true); preamble = 2; }
+                else if (count >= 2 && magic[0] == 254 && magic[1] == 255)
+                { encoding = new UnicodeEncoding(true, false, true); preamble = 2; }
+                else if (count >= 3 && magic.AsSpan(0, 3).SequenceEqual(new byte[] { 239, 187, 191 }))
+                    preamble = 3;
+                content.Position = preamble;
+                using var reader = new StreamReader(content, encoding, false, 8192, true);
                 var text = await ReadBoundedTextAsync(reader, ct);
                 if (text.Any(c => char.IsControl(c) && c is not ('\r' or '\n' or '\t')))
                     return new("application/octet-stream", [], false, "UNSUPPORTED_BINARY");

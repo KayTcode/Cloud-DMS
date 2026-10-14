@@ -12,11 +12,11 @@ public sealed class AddMultipartSessionState : Migration
     {
         migrationBuilder.CreateTable("LegacyUploadIntents", table => new
         {
-            Id = table.Column<Guid>(type: "char(36)", nullable: false),
-            TenantId = table.Column<Guid>(type: "char(36)", nullable: false),
-            UserId = table.Column<Guid>(type: "char(36)", nullable: false),
-            ProviderId = table.Column<Guid>(type: "char(36)", nullable: false),
-            FileId = table.Column<Guid>(type: "char(36)", nullable: false),
+            Id = table.Column<Guid>(type: "char(36)", collation: "ascii_general_ci", nullable: false),
+            TenantId = table.Column<Guid>(type: "char(36)", collation: "ascii_general_ci", nullable: false),
+            UserId = table.Column<Guid>(type: "char(36)", collation: "ascii_general_ci", nullable: false),
+            ProviderId = table.Column<Guid>(type: "char(36)", collation: "ascii_general_ci", nullable: false),
+            FileId = table.Column<Guid>(type: "char(36)", collation: "ascii_general_ci", nullable: false),
             ParentFolderId = table.Column<string>(type: "varchar(500)", maxLength: 500, nullable: true),
             Status = table.Column<string>(type: "varchar(32)", maxLength: 32, nullable: false),
             ExpiresAt = table.Column<DateTimeOffset>(type: "datetime(6)", nullable: false),
@@ -50,9 +50,9 @@ public sealed class AddMultipartSessionState : Migration
         migrationBuilder.AddColumn<string>("ContentType", "FileUploadSessions",
             type: "varchar(255)", maxLength: 255, nullable: false,
             defaultValue: "application/octet-stream");
-        migrationBuilder.AddColumn<Guid?>("FolderId", "FileUploadSessions", type: "char(36)", nullable: true);
-        migrationBuilder.AddColumn<Guid?>("DepartmentId", "FileUploadSessions", type: "char(36)", nullable: true);
-        migrationBuilder.AddColumn<Guid>("QuotaUserId", "FileUploadSessions", type: "char(36)", nullable: false,
+        migrationBuilder.AddColumn<Guid?>("FolderId", "FileUploadSessions", type: "char(36)", collation: "ascii_general_ci", nullable: true);
+        migrationBuilder.AddColumn<Guid?>("DepartmentId", "FileUploadSessions", type: "char(36)", collation: "ascii_general_ci", nullable: true);
+        migrationBuilder.AddColumn<Guid>("QuotaUserId", "FileUploadSessions", type: "char(36)", collation: "ascii_general_ci", nullable: false,
             defaultValue: Guid.Empty);
         migrationBuilder.AddColumn<long?>("PreviousDocumentVersion", "FileUploadSessions",
             type: "bigint", nullable: true);
@@ -65,11 +65,11 @@ public sealed class AddMultipartSessionState : Migration
         migrationBuilder.AddColumn<DateTimeOffset?>("CompletionLeaseExpiresAt", "FileUploadSessions",
             type: "datetime(6)", nullable: true);
         migrationBuilder.AddColumn<Guid?>("CompletionOwnerId", "FileUploadSessions",
-            type: "char(36)", nullable: true);
+            type: "char(36)", collation: "ascii_general_ci", nullable: true);
         migrationBuilder.AddColumn<long>("PreviousSizeBytes", "FileUploadSessions",
             type: "bigint", nullable: false, defaultValue: 0L);
         migrationBuilder.AddColumn<Guid?>("PreviousProviderId", "FileUploadSessions",
-            type: "char(36)", nullable: true);
+            type: "char(36)", collation: "ascii_general_ci", nullable: true);
         migrationBuilder.AddColumn<long>("QuotaReservedBytes", "FileUploadSessions",
             type: "bigint", nullable: false, defaultValue: 0L);
         migrationBuilder.AddColumn<long>("ProviderReservedBytes", "FileUploadSessions",

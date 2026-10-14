@@ -1,4 +1,4 @@
-﻿# Kiến trúc Cloud DMS
+# Kiến trúc Cloud DMS
 
 ## Tổng quan
 
@@ -29,4 +29,4 @@ Startup mặc định không migration/seed. `Database:InitializeOnStartup=true`
 
 ## Dự kiến kiểm chứng và triển khai
 
-Task11 chỉ kiểm biên dịch/tĩnh theo yêu cầu code trước; chưa chạy DB sạch/upgrade, sandbox/image, HTTP regression hay benchmark. Dùng [runbook](docs/search-read-runbook.md), mẫu `deploy/compose.search-read.yml`/`search-read.env.example`; compose root cũ không dành production. Rate limiter theo process, cần distributed policy khi nhiều replica. Chưa chốt digest toàn chuỗi image/package hoặc chứng minh resource budget/latency/Recall.
+Task12 đã kiểm DB sạch/nâng cấp, unit/legacy, dịch vụ thật và HTTP trong môi trường test riêng; benchmark corpus nhỏ không thay nghiệm thu production. Namespace host chặn converter/PDF; ClamAV engine và pipeline clean ingest đầy đủ chưa kiểm. Xem [kết quả và giới hạn](docs/search-read-validation.md). Dùng [runbook](docs/search-read-runbook.md), mẫu `deploy/compose.search-read.yml`/`search-read.env.example`; compose root cũ không dành production. Rate limiter theo process, cần distributed policy khi nhiều replica. Chưa chốt digest toàn chuỗi image/package hoặc chứng minh resource budget/latency/Recall cho production.

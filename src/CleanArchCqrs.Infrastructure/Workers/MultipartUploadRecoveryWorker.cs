@@ -44,20 +44,25 @@ public sealed class MultipartUploadRecoveryWorker(IServiceScopeFactory scopes,
             {
                 if (session.Status is FileUploadStatus.Pending or FileUploadStatus.Completing)
                 {
-                    await using var tx = await db.Database.BeginTransactionAsync(IsolationLevel.ReadCommitted, ct);
-                    var claimed = await db.FileUploadSessions.IgnoreQueryFilters()
-                        .Where(s => s.Id == session.Id
-                            && (s.Status == FileUploadStatus.Pending && s.ExpiresAt <= now
-                                || s.Status == FileUploadStatus.Completing && s.CompletionLeaseExpiresAt <= now))
-                        .ExecuteUpdateAsync(s => s.SetProperty(x => x.Status, FileUploadStatus.Expired), ct);
-                    if (claimed == 1)
+                    var expired = await db.Database.CreateExecutionStrategy().ExecuteAsync(async () =>
                     {
-                        await quota.ReleaseAsync(session.TenantId, session.DepartmentId, session.QuotaUserId,
-                            session.ProviderId, session.QuotaReservedBytes, ct, session.ProviderReservedBytes);
-                        await quota.ReleaseStagingAsync(session.ProviderId, session.ReservedBytes, ct);
-                    }
-                    await tx.CommitAsync(ct);
-                    if (claimed != 1) continue;
+                        await using var tx = await db.Database.BeginTransactionAsync(IsolationLevel.ReadCommitted, ct);
+                        var claimed = await db.FileUploadSessions.IgnoreQueryFilters()
+                            .Where(s => s.Id == session.Id
+                                && (s.Status == FileUploadStatus.Pending && s.ExpiresAt <= now
+                                    || s.Status == FileUploadStatus.Completing && s.CompletionLeaseExpiresAt <= now))
+                            .ExecuteUpdateAsync(s => s.SetProperty(x => x.Status, FileUploadStatus.Expired), ct);
+                        if (claimed == 1)
+                        {
+                            await quota.ReleaseAsync(session.TenantId, session.DepartmentId, session.QuotaUserId,
+                                session.ProviderId, session.QuotaReservedBytes, ct, session.ProviderReservedBytes);
+                            await quota.ReleaseStagingAsync(session.ProviderId, session.ReservedBytes, ct);
+                        }
+                        await tx.CommitAsync(ct);
+                        return claimed == 1 || await db.FileUploadSessions.IgnoreQueryFilters().AsNoTracking()
+                            .AnyAsync(s => s.Id == session.Id && s.Status == FileUploadStatus.Expired, ct);
+                    });
+                    if (!expired) continue;
                 }
                 var provider = await db.StorageProviders.IgnoreQueryFilters().AsNoTracking()
                     .SingleAsync(p => p.Id == session.ProviderId, ct);

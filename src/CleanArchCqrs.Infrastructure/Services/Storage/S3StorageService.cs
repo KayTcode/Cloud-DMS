@@ -99,6 +99,7 @@ public sealed class S3StorageService : IStorageService, IMultipartObjectStorage,
         var url = await _client.GetPreSignedURLAsync(new GetPreSignedUrlRequest
         {
             BucketName = _settings.Bucket, Key = key, Verb = HttpVerb.PUT,
+            Protocol = new Uri(_settings.Endpoint).Scheme == "https" ? Protocol.HTTPS : Protocol.HTTP,
             UploadId = uploadId, PartNumber = partNumber,
             Expires = DateTime.UtcNow.Add(lifetime)
         });
@@ -225,6 +226,7 @@ public sealed class S3StorageService : IStorageService, IMultipartObjectStorage,
             BucketName = _settings.Bucket,
             Key = key,
             Verb = HttpVerb.GET,
+            Protocol = new Uri(_settings.Endpoint).Scheme == "https" ? Protocol.HTTPS : Protocol.HTTP,
             Expires = expiresAt.UtcDateTime,
             ResponseHeaderOverrides = new ResponseHeaderOverrides
             {

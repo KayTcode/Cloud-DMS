@@ -58,7 +58,7 @@ public sealed class MySqlKeywordSearchService(AppDbContext db, IFileAclQuery acl
             where generation.Status == FileSearchStatus.Ready || generation.Status == FileSearchStatus.Partial
             select new { file, generation, chunk };
 
-        var content = await currentText
+        var scoredContent = currentText
             .Select(hit => new
             {
                 FileId = hit.file.Id, hit.file.DocumentVersion, GenerationId = hit.generation.Id,
@@ -67,10 +67,19 @@ public sealed class MySqlKeywordSearchService(AppDbContext db, IFileAclQuery acl
                     ? (EF.Functions.Like(hit.chunk.Text, pattern, "\\") ? 1.0 : 0.0)
                     : EF.Functions.Match(hit.chunk.Text, query, MySqlMatchSearchMode.NaturalLanguage)
             })
-            .Where(hit => hit.Score > 0)
+            .Where(hit => hit.Score > 0);
+        // Keep aggregation in SQL: Pomelo cannot translate ordered First over this group.
+        var bestScores = scoredContent
             .GroupBy(hit => new { hit.FileId, hit.DocumentVersion, hit.GenerationId })
-            .Select(group => group.OrderByDescending(hit => hit.Score)
-                .ThenBy(hit => hit.Ordinal).First())
+            .Select(group => new { group.Key.FileId, group.Key.DocumentVersion,
+                group.Key.GenerationId, Score = group.Max(hit => hit.Score) });
+        var content = await (from hit in scoredContent
+            join best in bestScores
+                on new { hit.FileId, hit.DocumentVersion, hit.GenerationId, hit.Score }
+                equals new { best.FileId, best.DocumentVersion, best.GenerationId, best.Score }
+            group hit by new { hit.FileId, hit.DocumentVersion, hit.GenerationId, hit.Score } into best
+            select new { best.Key.FileId, best.Key.DocumentVersion, best.Key.GenerationId,
+                best.Key.Score, Ordinal = best.Min(hit => hit.Ordinal) })
             .OrderByDescending(hit => hit.Score).ThenBy(hit => hit.FileId)
             .Take(window)
             .ToArrayAsync(cancellationToken);

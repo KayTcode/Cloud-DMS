@@ -70,7 +70,10 @@ public sealed class MultipartUploadService(
             throw new ArgumentException("Invalid upload size or name.");
         var requestHash = Hash(JsonSerializer.Serialize(new
         {
-            command.FileName, command.SizeBytes, command.FolderId, command.ReplaceFileId
+            command.FileName,
+            command.SizeBytes,
+            command.FolderId,
+            command.ReplaceFileId
         }));
         var (context, user, provider, _) = await authorization.RequireAsync(command.FolderId, command.ReplaceFileId, ct);
         var prior = await db.FileUploadSessions.IgnoreQueryFilters().AsNoTracking().SingleOrDefaultAsync(s =>
@@ -119,40 +122,58 @@ public sealed class MultipartUploadService(
         var uploadId = await storage.BeginAsync(key, "application/octet-stream", ct);
         var session = new FileUploadSession
         {
-            TenantId = context.TenantId, UserId = user.Id, QuotaUserId = quotaUserId,
+            TenantId = context.TenantId,
+            UserId = user.Id,
+            QuotaUserId = quotaUserId,
             DepartmentId = quotaDepartmentId,
-            FileId = fileId, DocumentVersion = version, PreviousDocumentVersion = command.ReplaceFileId.HasValue ? version - 1 : null,
-            ProviderId = provider.Id, ObjectKey = key, MultipartUploadId = uploadId,
-            FileName = command.FileName, FolderId = command.FolderId,
-            ReservedBytes = command.SizeBytes, IdempotencyKey = command.IdempotencyKey,
-            PreviousSizeBytes = previousSize, PreviousProviderId = previousProviderId,
-            QuotaReservedBytes = logicalReservation, ProviderReservedBytes = providerReservation,
+            FileId = fileId,
+            DocumentVersion = version,
+            PreviousDocumentVersion = command.ReplaceFileId.HasValue ? version - 1 : null,
+            ProviderId = provider.Id,
+            ObjectKey = key,
+            MultipartUploadId = uploadId,
+            FileName = command.FileName,
+            FolderId = command.FolderId,
+            ReservedBytes = command.SizeBytes,
+            IdempotencyKey = command.IdempotencyKey,
+            PreviousSizeBytes = previousSize,
+            PreviousProviderId = previousProviderId,
+            QuotaReservedBytes = logicalReservation,
+            ProviderReservedBytes = providerReservation,
             RequestHash = requestHash,
             ExpiresAt = DateTimeOffset.UtcNow.Add(SessionLifetime)
         };
         var commitAttempted = false;
         try
         {
-            await using var tx = await db.Database.BeginTransactionAsync(IsolationLevel.ReadCommitted, ct);
-            await quota.ReserveAsync(context.TenantId, quotaDepartmentId, quotaUserId,
-                provider.Id, logicalReservation, ct, providerReservation);
-            await quota.ReserveStagingAsync(provider.Id, command.SizeBytes, stagingLimit, ct);
-            if (command.ReplaceFileId.HasValue)
+            await db.Database.CreateExecutionStrategy().ExecuteAsync(async () =>
             {
-                var locked = await db.FileEntries.FromSqlInterpolated(
-                    $"SELECT * FROM `FileEntries` WHERE `Id` = {fileId} AND `TenantId` = {context.TenantId} FOR UPDATE")
-                    .IgnoreQueryFilters().AsNoTracking().ToArrayAsync(ct);
-                if (locked.Length != 1 || locked[0].DocumentVersion != version - 1
-                    || locked[0].SizeBytes != previousSize
-                    || locked[0].StorageProviderId != previousProviderId
-                    || locked[0].OwnerId != quotaUserId || locked[0].IsDeleted
-                    || locked[0].Lifecycle != FileLifecycle.Active)
-                    throw new AuthorizationChangedException();
-            }
-            db.FileUploadSessions.Add(session);
-            await db.SaveChangesAsync(ct);
-            commitAttempted = true;
-            await tx.CommitAsync(ct);
+                // A lost commit acknowledgement must not reserve quota a second time.
+                // This server-generated session identity is stable across strategy retries.
+                if (await db.FileUploadSessions.IgnoreQueryFilters().AsNoTracking()
+                    .AnyAsync(s => s.Id == session.Id, ct)) return;
+                commitAttempted = false;
+                await using var tx = await db.Database.BeginTransactionAsync(IsolationLevel.ReadCommitted, ct);
+                await quota.ReserveAsync(context.TenantId, quotaDepartmentId, quotaUserId,
+                    provider.Id, logicalReservation, ct, providerReservation);
+                await quota.ReserveStagingAsync(provider.Id, command.SizeBytes, stagingLimit, ct);
+                if (command.ReplaceFileId.HasValue)
+                {
+                    var locked = await db.FileEntries.FromSqlInterpolated(
+                        $"SELECT * FROM `FileEntries` WHERE `Id` = {fileId} AND `TenantId` = {context.TenantId} FOR UPDATE")
+                        .IgnoreQueryFilters().AsNoTracking().ToArrayAsync(ct);
+                    if (locked.Length != 1 || locked[0].DocumentVersion != version - 1
+                        || locked[0].SizeBytes != previousSize
+                        || locked[0].StorageProviderId != previousProviderId
+                        || locked[0].OwnerId != quotaUserId || locked[0].IsDeleted
+                        || locked[0].Lifecycle != FileLifecycle.Active)
+                        throw new AuthorizationChangedException();
+                }
+                db.FileUploadSessions.Add(session);
+                await db.SaveChangesAsync(ct);
+                commitAttempted = true;
+                await tx.CommitAsync(ct);
+            });
         }
         catch
         {
@@ -297,9 +318,13 @@ public sealed class MultipartUploadService(
                 await quota.ReleaseStagingAsync(current.ProviderId, current.ReservedBytes, token);
                 file = new FileEntry
                 {
-                    Id = current.FileId, TenantId = current.TenantId, OwnerId = current.QuotaUserId,
-                    DepartmentId = current.DepartmentId, OwningDepartmentId = current.DepartmentId,
-                    FolderId = current.FolderId, Name = current.FileName,
+                    Id = current.FileId,
+                    TenantId = current.TenantId,
+                    OwnerId = current.QuotaUserId,
+                    DepartmentId = current.DepartmentId,
+                    OwningDepartmentId = current.DepartmentId,
+                    FolderId = current.FolderId,
+                    Name = current.FileName,
                     StorageProviderId = current.ProviderId
                 };
                 db.FileEntries.Add(file);
@@ -311,10 +336,15 @@ public sealed class MultipartUploadService(
             file.ScanStatus = "Pending";
             db.FileContentVersions.Add(new FileContentVersion
             {
-                TenantId = current.TenantId, FileId = current.FileId,
-                DocumentVersion = current.DocumentVersion, ObjectKey = current.ObjectKey,
-                ProviderId = current.ProviderId, ContentType = "application/octet-stream",
-                SizeBytes = head.SizeBytes, Hash = string.Empty, ScanStatus = FileScanStatus.Pending
+                TenantId = current.TenantId,
+                FileId = current.FileId,
+                DocumentVersion = current.DocumentVersion,
+                ObjectKey = current.ObjectKey,
+                ProviderId = current.ProviderId,
+                ContentType = "application/octet-stream",
+                SizeBytes = head.SizeBytes,
+                Hash = string.Empty,
+                ScanStatus = FileScanStatus.Pending
             });
             var logicalRefund = checked(current.QuotaReservedBytes + current.PreviousSizeBytes - head.SizeBytes);
             var providerRefund = current.PreviousProviderId == current.ProviderId
@@ -327,10 +357,12 @@ public sealed class MultipartUploadService(
                     current.PreviousProviderId.Value, 0, token, current.PreviousSizeBytes);
             db.DocumentOutboxMessages.Add(new DocumentOutboxMessage
             {
-                TenantId = current.TenantId, FileId = current.FileId,
+                TenantId = current.TenantId,
+                FileId = current.FileId,
                 DocumentVersion = current.DocumentVersion,
                 EventType = current.PreviousDocumentVersion.HasValue ? "DocumentContentChanged" : "DocumentCreated",
-                IdempotencyKey = $"multipart:{current.Id:N}", Payload = "{}"
+                IdempotencyKey = $"multipart:{current.Id:N}",
+                Payload = "{}"
             });
         }, ct);
         return new(session.FileId, session.DocumentVersion, receipt);
@@ -342,8 +374,11 @@ public sealed class MultipartUploadService(
         if (session.Status == FileUploadStatus.Completed) return false;
         if (session.Status is FileUploadStatus.Failed or FileUploadStatus.Expired) return true;
         if (session.Status == FileUploadStatus.Completing) return false;
-        await using (var tx = await db.Database.BeginTransactionAsync(IsolationLevel.ReadCommitted, ct))
+        var aborted = await db.Database.CreateExecutionStrategy().ExecuteAsync(async () =>
         {
+            if (await db.FileUploadSessions.IgnoreQueryFilters().AsNoTracking()
+                .AnyAsync(s => s.Id == session.Id && s.Status == FileUploadStatus.Failed, ct)) return true;
+            await using var tx = await db.Database.BeginTransactionAsync(IsolationLevel.ReadCommitted, ct);
             var updated = await db.FileUploadSessions.IgnoreQueryFilters()
                 .Where(s => s.Id == session.Id && s.Status == FileUploadStatus.Pending)
                 .ExecuteUpdateAsync(s => s.SetProperty(x => x.Status, FileUploadStatus.Failed), ct);
@@ -354,8 +389,9 @@ public sealed class MultipartUploadService(
                 await quota.ReleaseStagingAsync(session.ProviderId, session.ReservedBytes, ct);
             }
             await tx.CommitAsync(ct);
-            if (updated != 1) return false;
-        }
+            return updated == 1;
+        });
+        if (!aborted) return false;
         using var storage = await StorageAsync(session, ct);
         if (await storage.InspectAsync(session.ObjectKey, ct) is not null)
             await ((IStorageService)storage).DeleteFileAsync(session.ObjectKey, ct);

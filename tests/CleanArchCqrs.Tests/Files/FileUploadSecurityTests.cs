@@ -1,4 +1,6 @@
 using CleanArchCqrs.Application.Common.Interfaces;
+using CleanArchCqrs.Application.Common.Authorization;
+using CleanArchCqrs.Infrastructure.Security;
 using CleanArchCqrs.Application.Features.Files.Commands.UploadFile;
 using CleanArchCqrs.Domain.Entities;
 using CleanArchCqrs.Tests.Common;
@@ -37,12 +39,13 @@ public class FileUploadSecurityTests
         _currentUserServiceMock.Setup(x => x.UserId).Returns(sysAdminUser.Id);
         _currentUserServiceMock.Setup(x => x.Role).Returns("SystemAdmin");
 
+        var security = new FileReadFixture(context, _currentUserServiceMock);
         var handler = new UploadFileCommandHandler(
             context,
             _storageFactoryMock.Object,
             _virusScannerMock.Object,
             _currentUserServiceMock.Object,
-            _loggerMock.Object);
+            _loggerMock.Object, new UploadAuthorization(context, security.Resolver, security.Snapshots, new FileAclQuery(context), security.Access, new AccessPolicyEvaluator()), new UploadQuota(context), new Mock<IAuthorizationMutationCoordinator>(MockBehavior.Strict).Object);
 
         using var stream = new MemoryStream(new byte[] { 1, 2, 3 });
         var command = new UploadFileCommand
@@ -54,11 +57,7 @@ public class FileUploadSecurityTests
         };
 
         // Act
-        var result = await handler.Handle(command, CancellationToken.None);
-
-        // Assert
-        result.IsSuccess.Should().BeFalse();
-        result.Error.Should().Contain("SystemAdmin");
+        await Assert.ThrowsAsync<UnauthorizedAccessException>(() => handler.Handle(command, CancellationToken.None));
     }
 
     [Fact]
@@ -87,12 +86,13 @@ public class FileUploadSecurityTests
         _currentUserServiceMock.Setup(x => x.TenantId).Returns(tenant.Id);
         _currentUserServiceMock.Setup(x => x.Role).Returns("Employee");
 
+        var security = new FileReadFixture(context, _currentUserServiceMock);
         var handler = new UploadFileCommandHandler(
             context,
             _storageFactoryMock.Object,
             _virusScannerMock.Object,
             _currentUserServiceMock.Object,
-            _loggerMock.Object);
+            _loggerMock.Object, new UploadAuthorization(context, security.Resolver, security.Snapshots, new FileAclQuery(context), security.Access, new AccessPolicyEvaluator()), new UploadQuota(context), new Mock<IAuthorizationMutationCoordinator>(MockBehavior.Strict).Object);
 
         using var stream = new MemoryStream(new byte[] { 1, 2, 3 });
         var command = new UploadFileCommand
@@ -141,12 +141,13 @@ public class FileUploadSecurityTests
         _currentUserServiceMock.Setup(x => x.TenantId).Returns(tenant.Id);
         _currentUserServiceMock.Setup(x => x.Role).Returns("Employee");
 
+        var security = new FileReadFixture(context, _currentUserServiceMock);
         var handler = new UploadFileCommandHandler(
             context,
             _storageFactoryMock.Object,
             _virusScannerMock.Object,
             _currentUserServiceMock.Object,
-            _loggerMock.Object);
+            _loggerMock.Object, new UploadAuthorization(context, security.Resolver, security.Snapshots, new FileAclQuery(context), security.Access, new AccessPolicyEvaluator()), new UploadQuota(context), new Mock<IAuthorizationMutationCoordinator>(MockBehavior.Strict).Object);
 
         // Uploading 20 bytes -> exceeds available 10 bytes
         using var stream = new MemoryStream(new byte[20]);
@@ -163,6 +164,6 @@ public class FileUploadSecurityTests
 
         // Assert
         result.IsSuccess.Should().BeFalse();
-        result.Error.Should().Contain("hết hạn mức lưu trữ cá nhân");
+        result.Error.Should().Contain("Hết dung lượng cá nhân");
     }
 }

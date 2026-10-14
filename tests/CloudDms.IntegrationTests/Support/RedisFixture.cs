@@ -14,6 +14,7 @@ public sealed class RedisFixture : IAsyncLifetime
 {
     private readonly string _containerName = $"cloud-dms-redis-tests-{Guid.NewGuid():N}";
     private uint _publishedPort;
+    public string ConnectionString => $"127.0.0.1:{_publishedPort}";
 
     public async Task InitializeAsync()
     {

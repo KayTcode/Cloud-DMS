@@ -51,17 +51,18 @@ public class MultiTenancyAndIdorTests
         _currentUserServiceMock.Setup(x => x.TenantId).Returns(tenantBId);
         _currentUserServiceMock.Setup(x => x.Role).Returns("TenantAdmin");
 
+        var security = new FileReadFixture(context, _currentUserServiceMock);
         var handler = new DownloadFileQueryHandler(
             context,
             _storageFactoryMock.Object,
-            _currentUserServiceMock.Object);
+            security.Resolver, security.Access);
 
         // Act
         var result = await handler.Handle(new DownloadFileQuery(fileTenantA.Id), CancellationToken.None);
 
         // Assert
         result.IsSuccess.Should().BeFalse();
-        result.Error.Should().Contain("Tệp tin không tồn tại hoặc đã bị xóa");
+        _storageServiceMock.Verify(x => x.DownloadFileAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Fact]
@@ -96,16 +97,17 @@ public class MultiTenancyAndIdorTests
         _currentUserServiceMock.Setup(x => x.DepartmentId).Returns(deptHr);
         _currentUserServiceMock.Setup(x => x.Role).Returns("Employee");
 
+        var security = new FileReadFixture(context, _currentUserServiceMock);
         var handler = new DownloadFileQueryHandler(
             context,
             _storageFactoryMock.Object,
-            _currentUserServiceMock.Object);
+            security.Resolver, security.Access);
 
         // Act
         var result = await handler.Handle(new DownloadFileQuery(fileSales.Id), CancellationToken.None);
 
         // Assert
         result.IsSuccess.Should().BeFalse();
-        result.Error.Should().Contain("Tệp tin không tồn tại hoặc đã bị xóa");
+        _storageServiceMock.Verify(x => x.DownloadFileAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 }

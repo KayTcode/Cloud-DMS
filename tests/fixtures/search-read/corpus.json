@@ -1,0 +1,467 @@
+{
+  "description": "Dữ liệu tổng hợp không nhạy cảm; nhãn relevance nhị phân do người viết fixture xác định, chưa thẩm định độc lập.",
+  "documents": [
+    {
+      "id": "budget",
+      "name": "Kế hoạch ngân sách 2027.txt",
+      "text": "Kế hoạch ngân sách năm 2027 dự kiến chi phí vận hành, dự phòng và mua thiết bị. Nhóm tài chính rà soát tổng chi mỗi quý.",
+      "metadataOnly": false
+    },
+    {
+      "id": "leave",
+      "name": "Chính sách nghỉ phép.md",
+      "text": "Nhân viên gửi yêu cầu nghỉ phép trước ba ngày. Trưởng nhóm duyệt lịch nghỉ để bảo đảm đủ người trực. Annual leave requests require approval.",
+      "metadataOnly": false
+    },
+    {
+      "id": "backup",
+      "name": "Hướng dẫn sao lưu.txt",
+      "text": "Sao lưu dữ liệu hằng ngày vào kho riêng. Kiểm tra khôi phục bản sao mỗi tháng. Backup recovery verification prevents silent data loss.",
+      "metadataOnly": false
+    },
+    {
+      "id": "meeting",
+      "name": "Biên bản họp thiết kế.txt",
+      "text": "Cuộc họp thiết kế thống nhất giao diện tìm kiếm, phân trang và lọc theo thư mục. Nhóm sẽ thử nghiệm giao diện với người dùng nội bộ.",
+      "metadataOnly": false
+    },
+    {
+      "id": "inventory",
+      "name": "Danh mục thiết bị.csv",
+      "text": "Danh mục thiết bị gồm máy tính, màn hình và bàn phím. Mỗi thiết bị có mã kiểm kê, ngày bàn giao và người phụ trách. Equipment inventory tracks assigned assets.",
+      "metadataOnly": false
+    },
+    {
+      "id": "travel",
+      "name": "Quy trình công tác.txt",
+      "text": "Chuyến công tác cần phê duyệt trước khi đặt vé. Lưu hóa đơn khách sạn và phương tiện để hoàn ứng. Business travel reimbursement requires receipts.",
+      "metadataOnly": false
+    },
+    {
+      "id": "safety",
+      "name": "An toàn phòng máy.txt",
+      "text": "Phòng máy phải có cảm biến nhiệt độ và bình chữa cháy. Không để nước gần thiết bị điện. Server room safety includes temperature monitoring and fire protection.",
+      "metadataOnly": false
+    },
+    {
+      "id": "ai",
+      "name": "AI.txt",
+      "text": "AI là trí tuệ nhân tạo. Tài liệu giới thiệu mô hình học máy và cách đánh giá dữ liệu huấn luyện. Artificial intelligence model evaluation uses labelled examples.",
+      "metadataOnly": false
+    },
+    {
+      "id": "metadata",
+      "name": "Danh mục archive_50%_metadata.zip",
+      "text": "",
+      "metadataOnly": true
+    },
+    {
+      "id": "replacement",
+      "name": "Lịch phát hành bản mới.txt",
+      "text": "Nội dung hiện tại đã thay thế phiên bản cũ. Lịch phát hành mới là tháng mười hai. Current release schedule supersedes the obsolete November plan.",
+      "metadataOnly": false
+    }
+  ],
+  "queries": [
+    {
+      "id": "q1",
+      "query": "ngân sách",
+      "relevant": [
+        "budget"
+      ],
+      "category": "multilingual"
+    },
+    {
+      "id": "q2",
+      "query": "chi phí vận hành",
+      "relevant": [
+        "budget"
+      ],
+      "category": "multilingual"
+    },
+    {
+      "id": "q3",
+      "query": "financial budget planning",
+      "relevant": [
+        "budget"
+      ],
+      "category": "multilingual"
+    },
+    {
+      "id": "q4",
+      "query": "kế hoạch tài chính năm tới",
+      "relevant": [
+        "budget"
+      ],
+      "category": "multilingual"
+    },
+    {
+      "id": "q5",
+      "query": "dự phòng mua thiết bị",
+      "relevant": [
+        "budget"
+      ],
+      "category": "multilingual"
+    },
+    {
+      "id": "q6",
+      "query": "nghỉ phép",
+      "relevant": [
+        "leave"
+      ],
+      "category": "multilingual"
+    },
+    {
+      "id": "q7",
+      "query": "annual leave requests",
+      "relevant": [
+        "leave"
+      ],
+      "category": "multilingual"
+    },
+    {
+      "id": "q8",
+      "query": "xin nghỉ trước bao lâu",
+      "relevant": [
+        "leave"
+      ],
+      "category": "multilingual"
+    },
+    {
+      "id": "q9",
+      "query": "lịch nghỉ nhân viên",
+      "relevant": [
+        "leave"
+      ],
+      "category": "multilingual"
+    },
+    {
+      "id": "q10",
+      "query": "leave approval policy",
+      "relevant": [
+        "leave"
+      ],
+      "category": "multilingual"
+    },
+    {
+      "id": "q11",
+      "query": "sao lưu",
+      "relevant": [
+        "backup"
+      ],
+      "category": "multilingual"
+    },
+    {
+      "id": "q12",
+      "query": "backup recovery",
+      "relevant": [
+        "backup"
+      ],
+      "category": "multilingual"
+    },
+    {
+      "id": "q13",
+      "query": "khôi phục dữ liệu",
+      "relevant": [
+        "backup"
+      ],
+      "category": "multilingual"
+    },
+    {
+      "id": "q14",
+      "query": "daily data protection copies",
+      "relevant": [
+        "backup"
+      ],
+      "category": "multilingual"
+    },
+    {
+      "id": "q15",
+      "query": "kiểm tra bản sao mỗi tháng",
+      "relevant": [
+        "backup"
+      ],
+      "category": "multilingual"
+    },
+    {
+      "id": "q16",
+      "query": "họp thiết kế",
+      "relevant": [
+        "meeting"
+      ],
+      "category": "multilingual"
+    },
+    {
+      "id": "q17",
+      "query": "giao diện tìm kiếm",
+      "relevant": [
+        "meeting"
+      ],
+      "category": "multilingual"
+    },
+    {
+      "id": "q18",
+      "query": "design meeting minutes",
+      "relevant": [
+        "meeting"
+      ],
+      "category": "multilingual"
+    },
+    {
+      "id": "q19",
+      "query": "phân trang thư mục",
+      "relevant": [
+        "meeting"
+      ],
+      "category": "multilingual"
+    },
+    {
+      "id": "q20",
+      "query": "thử nghiệm giao diện nội bộ",
+      "relevant": [
+        "meeting"
+      ],
+      "category": "multilingual"
+    },
+    {
+      "id": "q21",
+      "query": "thiết bị",
+      "relevant": [
+        "inventory"
+      ],
+      "category": "multilingual"
+    },
+    {
+      "id": "q22",
+      "query": "equipment inventory",
+      "relevant": [
+        "inventory"
+      ],
+      "category": "multilingual"
+    },
+    {
+      "id": "q23",
+      "query": "mã kiểm kê",
+      "relevant": [
+        "inventory"
+      ],
+      "category": "multilingual"
+    },
+    {
+      "id": "q24",
+      "query": "máy tính màn hình bàn phím",
+      "relevant": [
+        "inventory"
+      ],
+      "category": "multilingual"
+    },
+    {
+      "id": "q25",
+      "query": "assigned assets handover",
+      "relevant": [
+        "inventory"
+      ],
+      "category": "multilingual"
+    },
+    {
+      "id": "q26",
+      "query": "công tác",
+      "relevant": [
+        "travel"
+      ],
+      "category": "multilingual"
+    },
+    {
+      "id": "q27",
+      "query": "travel reimbursement",
+      "relevant": [
+        "travel"
+      ],
+      "category": "multilingual"
+    },
+    {
+      "id": "q28",
+      "query": "hoàn ứng hóa đơn",
+      "relevant": [
+        "travel"
+      ],
+      "category": "multilingual"
+    },
+    {
+      "id": "q29",
+      "query": "đặt vé khách sạn",
+      "relevant": [
+        "travel"
+      ],
+      "category": "multilingual"
+    },
+    {
+      "id": "q30",
+      "query": "business trip approval",
+      "relevant": [
+        "travel"
+      ],
+      "category": "multilingual"
+    },
+    {
+      "id": "q31",
+      "query": "phòng máy",
+      "relevant": [
+        "safety"
+      ],
+      "category": "multilingual"
+    },
+    {
+      "id": "q32",
+      "query": "server room safety",
+      "relevant": [
+        "safety"
+      ],
+      "category": "multilingual"
+    },
+    {
+      "id": "q33",
+      "query": "bình chữa cháy",
+      "relevant": [
+        "safety"
+      ],
+      "category": "multilingual"
+    },
+    {
+      "id": "q34",
+      "query": "cảm biến nhiệt độ",
+      "relevant": [
+        "safety"
+      ],
+      "category": "multilingual"
+    },
+    {
+      "id": "q35",
+      "query": "nước gần thiết bị điện",
+      "relevant": [
+        "safety"
+      ],
+      "category": "multilingual"
+    },
+    {
+      "id": "q36",
+      "query": "AI",
+      "relevant": [
+        "ai"
+      ],
+      "category": "multilingual"
+    },
+    {
+      "id": "q37",
+      "query": "trí tuệ nhân tạo",
+      "relevant": [
+        "ai"
+      ],
+      "category": "multilingual"
+    },
+    {
+      "id": "q38",
+      "query": "artificial intelligence",
+      "relevant": [
+        "ai"
+      ],
+      "category": "multilingual"
+    },
+    {
+      "id": "q39",
+      "query": "học máy",
+      "relevant": [
+        "ai"
+      ],
+      "category": "multilingual"
+    },
+    {
+      "id": "q40",
+      "query": "model evaluation labelled examples",
+      "relevant": [
+        "ai"
+      ],
+      "category": "multilingual"
+    },
+    {
+      "id": "q41",
+      "query": "archive_50%",
+      "relevant": [
+        "metadata"
+      ],
+      "category": "metadata"
+    },
+    {
+      "id": "q42",
+      "query": "metadata.zip",
+      "relevant": [
+        "metadata"
+      ],
+      "category": "metadata"
+    },
+    {
+      "id": "q43",
+      "query": "Danh mục archive",
+      "relevant": [
+        "metadata"
+      ],
+      "category": "metadata"
+    },
+    {
+      "id": "q44",
+      "query": "50%_metadata",
+      "relevant": [
+        "metadata"
+      ],
+      "category": "metadata"
+    },
+    {
+      "id": "q45",
+      "query": "archive_50%_metadata.zip",
+      "relevant": [
+        "metadata"
+      ],
+      "category": "metadata"
+    },
+    {
+      "id": "q46",
+      "query": "lịch phát hành",
+      "relevant": [
+        "replacement"
+      ],
+      "category": "replacement"
+    },
+    {
+      "id": "q47",
+      "query": "tháng mười hai",
+      "relevant": [
+        "replacement"
+      ],
+      "category": "replacement"
+    },
+    {
+      "id": "q48",
+      "query": "current release schedule",
+      "relevant": [
+        "replacement"
+      ],
+      "category": "replacement"
+    },
+    {
+      "id": "q49",
+      "query": "nội dung hiện tại",
+      "relevant": [
+        "replacement"
+      ],
+      "category": "replacement"
+    },
+    {
+      "id": "q50",
+      "query": "bản mới",
+      "relevant": [
+        "replacement"
+      ],
+      "category": "replacement"
+    }
+  ]
+}

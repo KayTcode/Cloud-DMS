@@ -19,5 +19,6 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\CleanArchCqrs.Application\CleanArchCqrs.Application.csproj" />
     <ProjectReference Include="..\..\src\CleanArchCqrs.Infrastructure\CleanArchCqrs.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\src\CleanArchCqrs.API\CleanArchCqrs.API.csproj" />
   </ItemGroup>
 </Project>

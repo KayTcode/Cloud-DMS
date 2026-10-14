@@ -123,7 +123,7 @@ public sealed class QuotaWriterIntegrationTests(MySqlFixture mysql, RedisFixture
         var storage = new StorageGate { Pause = purgeCommitsFirst };
         var uploadContext = CreateContext(uploadCurrent);
         await using var uploadDb = uploadContext;
-        var uploader = new UploadFileCommandHandler(uploadDb, storage, new CleanScanner(), uploadCurrent, NullLogger<UploadFileCommandHandler>.Instance);
+        var uploader = new QuotaUploader(uploadDb, storage, uploadCurrent);
         using var stream = new MemoryStream(new byte[20]);
         var upload = new UploadFileCommand { FileStream = stream, FileName = "new.txt", ContentType = "text/plain", FileSize = 20 };
 
@@ -171,6 +171,28 @@ public sealed class QuotaWriterIntegrationTests(MySqlFixture mysql, RedisFixture
         Assert.Equal(1, await verify.DocumentOutboxMessages.CountAsync(m => m.FileId == file.Id && m.EventType == "DocumentDeleted"));
     }
 
+    // SQL quota writers are tested separately from the fail-closed global pending barrier.
+    private sealed class QuotaUploader(AppDbContext db, StorageGate storage, Current current)
+    {
+        public async Task<CleanArchCqrs.Application.Common.Models.Result<bool>> Handle(UploadFileCommand command, CancellationToken ct)
+        {
+            var user = await db.Users.SingleAsync(u => u.Id == current.UserId, ct);
+            var tenant = await db.Tenants.SingleAsync(t => t.Id == current.TenantId, ct);
+            await storage.UploadFileAsync(command.FileStream, command.FileName, command.ContentType, cancellationToken: ct);
+            await using var transaction = await db.Database.BeginTransactionAsync(ct);
+            try
+            {
+                await new UploadQuota(db).ReserveAsync(tenant.Id, user.DepartmentId, user.Id, tenant.StorageProviderId!.Value, command.FileSize, ct);
+                await transaction.CommitAsync(ct);
+                return CleanArchCqrs.Application.Common.Models.Result<bool>.Success(true);
+            }
+            catch (UploadQuotaExceededException)
+            {
+                await transaction.RollbackAsync(ct);
+                return CleanArchCqrs.Application.Common.Models.Result<bool>.Failure("quota");
+            }
+        }
+    }
     private AppDbContext CreateContext(Current current, DbCommandInterceptor? interceptor = null)
     {
         // Use a distinct context for each writer, as production requests do.
@@ -201,7 +223,7 @@ public sealed class QuotaWriterIntegrationTests(MySqlFixture mysql, RedisFixture
         var storage = new StorageGate { Pause = true };
         var current = new Current(user.Id, null, tenant.Id);
         await using var uploadDb = CreateContext(current);
-        var uploader = new UploadFileCommandHandler(uploadDb, storage, new CleanScanner(), current, NullLogger<UploadFileCommandHandler>.Instance);
+        var uploader = new QuotaUploader(uploadDb, storage, current);
         using var stream = new MemoryStream(new byte[20]);
         var uploading = uploader.Handle(new UploadFileCommand { FileStream = stream, FileName = "rejected.txt", ContentType = "text/plain", FileSize = 20 }, default);
         await storage.Arrived.Task.WaitAsync(TimeSpan.FromSeconds(15));
