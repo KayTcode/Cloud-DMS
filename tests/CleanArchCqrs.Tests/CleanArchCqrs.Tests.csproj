@@ -21,7 +21,6 @@
     <ProjectReference Include="..\..\src\CleanArchCqrs.Domain\CleanArchCqrs.Domain.csproj" />
     <ProjectReference Include="..\..\src\CleanArchCqrs.Application\CleanArchCqrs.Application.csproj" />
     <ProjectReference Include="..\..\src\CleanArchCqrs.Infrastructure\CleanArchCqrs.Infrastructure.csproj" />
-    <ProjectReference Include="..\..\src\CleanArchCqrs.API\CleanArchCqrs.API.csproj" />
   </ItemGroup>
 
   <ItemGroup>

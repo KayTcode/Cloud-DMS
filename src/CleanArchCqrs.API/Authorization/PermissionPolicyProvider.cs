@@ -15,7 +15,11 @@ namespace CleanArchCqrs.API.Authorization
 
             return new AuthorizationPolicyBuilder()
                 .RequireAuthenticatedUser()
-                .RequireClaim("permission", policyName)
+                .RequireAssertion(ctx =>
+                    ctx.User.IsInRole("SystemAdmin") ||
+                    ctx.User.HasClaim(System.Security.Claims.ClaimTypes.Role, "SystemAdmin") ||
+                    ctx.User.HasClaim("role", "SystemAdmin") ||
+                    ctx.User.HasClaim("permission", policyName))
                 .Build();
         }
     }

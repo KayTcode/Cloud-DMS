@@ -5,5 +5,8 @@ public record InvitationValidationDto(
     string Message,
     string? Email = null,
     string? FullName = null,
-    string? TenantName = null
+    string? TenantName = null,
+    string? Role = null,
+    string? DepartmentName = null,
+    string? TokenType = null
 );

@@ -6,7 +6,7 @@ public class UserStorageQuota : BaseEntity
 {
     public Guid UserId { get; set; }
 
-    public Guid DepartmentId { get; set; }
+    public Guid? DepartmentId { get; set; }
 
     private long _quotaBytes;
     private long _usedBytes;
@@ -29,5 +29,5 @@ public class UserStorageQuota : BaseEntity
 
     public User User { get; set; } = null!;
 
-    public Department Department { get; set; } = null!;
+    public Department? Department { get; set; }
 }

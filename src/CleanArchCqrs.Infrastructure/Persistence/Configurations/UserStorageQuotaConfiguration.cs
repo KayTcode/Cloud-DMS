@@ -28,6 +28,15 @@ public class UserStorageQuotaConfiguration : IEntityTypeConfiguration<UserStorag
             .HasForeignKey(q => q.UserId)
             .OnDelete(DeleteBehavior.Restrict);
 
+        builder.Property(q => q.DepartmentId)
+            .IsRequired(false);
+
+        builder.HasOne(q => q.Department)
+            .WithMany(d => d.UserStorageQuotas)
+            .HasForeignKey(q => q.DepartmentId)
+            .OnDelete(DeleteBehavior.Restrict)
+            .IsRequired(false);
+
         builder.HasIndex(q => new { q.UserId, q.DepartmentId })
             .IsUnique();
     }

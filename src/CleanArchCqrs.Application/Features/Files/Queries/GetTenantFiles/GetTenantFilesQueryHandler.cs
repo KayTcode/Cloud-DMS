@@ -1,4 +1,4 @@
-﻿using CleanArchCqrs.Application.Common.Exceptions;
+using CleanArchCqrs.Application.Common.Exceptions;
 using CleanArchCqrs.Application.Common.Interfaces;
 using CleanArchCqrs.Application.Common.Models;
 using CleanArchCqrs.Application.Features.Files.DTOs;
@@ -30,6 +30,33 @@ public class GetTenantFilesQueryHandler(IApplicationDbContext db, IFileAccessCon
             var pattern = "%" + request.SearchTerm.Trim().Replace("\\", "\\\\").Replace("%", "\\%").Replace("_", "\\_") + "%";
             scope = scope.Where(f => EF.Functions.Like(f.Name, pattern, "\\"));
         }
+
+        var currentUser = await db.Users.AsNoTracking()
+            .FirstOrDefaultAsync(u => u.Id == context.Actor.UserId, ct);
+        Guid? targetDepartmentId = request.DepartmentId;
+        if (!targetDepartmentId.HasValue && currentUser?.DepartmentId.HasValue == true)
+        {
+            var isDeptScoped = await db.UserRoles.AnyAsync(ur => ur.UserId == context.Actor.UserId && (ur.Role.Name == "DepartmentAdmin" || ur.Role.Name == "Employee"), ct);
+            if (isDeptScoped)
+            {
+                targetDepartmentId = currentUser.DepartmentId;
+            }
+        }
+
+        CleanArchCqrs.Domain.Entities.Department? department = null;
+        if (targetDepartmentId.HasValue)
+        {
+            department = await db.Departments.AsNoTracking()
+                .FirstOrDefaultAsync(d => d.Id == targetDepartmentId.Value && d.TenantId == context.TenantId && d.IsActive, ct);
+
+            if (department == null)
+            {
+                return Result<TenantStorageSummaryDto>.Failure("Phòng ban không tồn tại hoặc không thuộc tổ chức này.");
+            }
+
+            scope = scope.Where(f => f.DepartmentId == targetDepartmentId.Value || f.OwningDepartmentId == targetDepartmentId.Value);
+        }
+
         var rows = await scope.OrderByDescending(f => f.CreatedAt).ThenBy(f => f.Id)
             .Skip((request.PageNumber - 1) * request.PageSize).Take(request.PageSize + 1)
             .Select(f => new { f.Id, f.DocumentVersion }).ToArrayAsync(ct);
@@ -43,12 +70,13 @@ public class GetTenantFilesQueryHandler(IApplicationDbContext db, IFileAccessCon
             .ToListAsync(ct);
         await access.AssertStillValidAsync(context, files.Select(f => grants[f.Id]).ToArray(), ct);
         if (await resolver.ResolveContextAsync(ct) != context) throw new AuthorizationChangedException();
-        var quota = tenant.StorageQuotaBytes;
-        var used = tenant.StorageUsedBytes;
+        var quota = department != null ? department.QuotaBytes : tenant.StorageQuotaBytes;
+        var used = department != null ? department.UsedBytes : tenant.StorageUsedBytes;
+        var summaryName = department != null ? $"{tenant.Name} - {department.Name}" : tenant.Name;
         var hasMore = files.Count > request.PageSize;
         files = files.Take(request.PageSize).ToList();
         // Preserve DTO shape, but counts are only this authorized page, never hidden candidates.
-        return Result<TenantStorageSummaryDto>.Success(new(tenant.Id, tenant.Name, quota, used,
+        return Result<TenantStorageSummaryDto>.Success(new(tenant.Id, summaryName, quota, used,
             Math.Max(0, quota - used), quota > 0 ? Math.Round((double)used / quota * 100, 2) : 0,
             tenant.StorageProviderId, tenant.StorageProvider?.Name, tenant.StorageProvider?.Type.ToString(),
             files, files.Count, request.PageNumber, request.PageSize, hasMore));

@@ -95,7 +95,8 @@ public class RefreshTokenCommandHandler : IRequestHandler<RefreshTokenCommand, R
             user.TenantId,
             permissions.ToList(),
             newRefreshTokenValue,
-            newRefreshTokenExpiresAt));
+            newRefreshTokenExpiresAt,
+            user.DepartmentId));
     }
 
     private static string HashRefreshToken(string refreshToken)

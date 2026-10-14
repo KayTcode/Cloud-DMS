@@ -6,6 +6,8 @@ using CleanArchCqrs.Application.Users.Commands.RefreshToken;
 using CleanArchCqrs.Domain.Entities;
 using CleanArchCqrs.Tests.Common;
 using Microsoft.EntityFrameworkCore;
+using Moq;
+using Xunit;
 
 namespace CleanArchCqrs.Tests.Auth;
 

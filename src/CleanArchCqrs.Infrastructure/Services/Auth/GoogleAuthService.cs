@@ -219,14 +219,39 @@ public sealed class GoogleAuthService : IGoogleAuthService
             throw new UnauthorizedAccessException("Không tìm thấy tài khoản Cloud DMS đang hoạt động khớp với email Google này. Tài khoản cần được quản trị viên tạo trước khi đăng nhập bằng Google.");
         }
 
-        if (!user.IsActive)
+        // Nếu tài khoản được tạo từ lời mời (đang chờ kích hoạt), tự động kích hoạt khi đăng nhập bằng đúng email Google
+        if (!user.EmailConfirmed || !user.IsActive)
         {
-            throw new UnauthorizedAccessException("Tài khoản người dùng đã bị vô hiệu hóa.");
-        }
+            var hasPendingInvitation = await _context.EmailVerificationTokens
+                .AnyAsync(t => t.UserId == user.Id && !t.IsUsed && t.ExpiresAt > DateTime.UtcNow, cancellationToken);
 
-        if (!user.EmailConfirmed)
-        {
-            throw new UnauthorizedAccessException("Tài khoản Google chưa xác nhận email trong Cloud DMS.");
+            if (hasPendingInvitation)
+            {
+                user.Active();
+                user.EmailConfirmed = true;
+
+                // Đánh dấu các token lời mời là đã sử dụng
+                var pendingTokens = await _context.EmailVerificationTokens
+                    .Where(t => t.UserId == user.Id && !t.IsUsed)
+                    .ToListAsync(cancellationToken);
+
+                foreach (var inv in pendingTokens)
+                {
+                    inv.MarkAsUsed();
+                }
+            }
+            else
+            {
+                if (!user.IsActive)
+                {
+                    throw new UnauthorizedAccessException("Tài khoản người dùng đã bị vô hiệu hóa.");
+                }
+
+                if (!user.EmailConfirmed)
+                {
+                    throw new UnauthorizedAccessException("Tài khoản Google chưa xác nhận email trong Cloud DMS.");
+                }
+            }
         }
 
         if (!string.IsNullOrWhiteSpace(user.GoogleSubject) && !string.Equals(user.GoogleSubject, tokenInfo.Sub, StringComparison.OrdinalIgnoreCase))
@@ -270,7 +295,8 @@ public sealed class GoogleAuthService : IGoogleAuthService
             user.TenantId,
             permissions.ToList(),
             refreshToken,
-            refreshTokenExpiresAt);
+            refreshTokenExpiresAt,
+            user.DepartmentId);
 
         var returnUrl = session.ReturnUrl;
         return new GoogleLoginResultDto(login, returnUrl);
@@ -386,7 +412,7 @@ public sealed class GoogleAuthService : IGoogleAuthService
 
         if (uri.IsLoopback && (uri.Host.Equals("localhost", StringComparison.OrdinalIgnoreCase) || uri.Host.Equals("127.0.0.1", StringComparison.OrdinalIgnoreCase)))
         {
-            return uri.PathAndQuery;
+            return uri.ToString();
         }
 
         return null;

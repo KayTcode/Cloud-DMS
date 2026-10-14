@@ -62,14 +62,18 @@ public class EmailService : IEmailService
             </div>
 
             <p style='font-size: 14px; color: #475569; line-height: 1.6;'>
-                Để hoàn tất kích hoạt tài khoản và tự thiết lập mật khẩu đăng nhập, vui lòng nhấn vào nút xác nhận bên dưới:
+                Để hoàn tất kích hoạt tài khoản và truy cập cổng quản trị, bạn chỉ cần xác nhận tài khoản bằng Gmail này hoặc nhấn vào nút bên dưới:
             </p>
             
             <div style='text-align: center; margin: 32px 0;'>
                 <a href='{activationLink}' style='background-color: #2563eb; color: #ffffff; padding: 14px 32px; text-decoration: none; border-radius: 8px; font-weight: 600; font-size: 15px; display: inline-block; box-shadow: 0 4px 6px -1px rgba(37, 99, 235, 0.2);'>
-                    👉 Kích hoạt Tài khoản & Thiết lập Mật khẩu
+                    👉 Kích hoạt Tài khoản bằng Gmail
                 </a>
             </div>
+
+            <p style='font-size: 13px; color: #0284c7; background-color: #f0f9ff; padding: 12px; border-radius: 6px; text-align: center; margin: 16px 0;'>
+                💡 <strong>Đăng nhập tiện lợi:</strong> Sau khi kích hoạt, bạn có thể bấm trực tiếp <em>""Đăng nhập với Google Workspace""</em> bằng chính địa chỉ email này mà không cần ghi nhớ mật khẩu!
+            </p>
 
             <p style='font-size: 12px; color: #94a3b8; line-height: 1.5;'>
                 * Lưu ý: Liên kết này có thời hạn trong <strong>48 giờ</strong>. Nếu bạn không bấm được vào nút trên, hãy sao chép đường dẫn sau vào trình duyệt:<br/>

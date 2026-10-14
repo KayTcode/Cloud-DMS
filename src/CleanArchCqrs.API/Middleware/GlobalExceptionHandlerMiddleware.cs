@@ -70,7 +70,11 @@ public class GlobalExceptionHandlerMiddleware
                 StatusCodes.Status503ServiceUnavailable => "Security dependency unavailable",
                 _ => "Internal server error"
             },
-            Detail = "Request could not be completed.",
+            Detail = statusCode >= 500
+                ? "Request could not be completed."
+                : (exception.InnerException != null
+                    ? $"{exception.Message} ---> {exception.InnerException.Message}"
+                    : exception.Message),
             Instance = context.Request.Path
         };
 

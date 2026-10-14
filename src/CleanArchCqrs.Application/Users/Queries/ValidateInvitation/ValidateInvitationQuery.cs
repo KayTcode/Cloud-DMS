@@ -28,6 +28,8 @@ public class ValidateInvitationQueryHandler : IRequestHandler<ValidateInvitation
         var tokenRecord = await _context.EmailVerificationTokens
             .Include(t => t.User)
                 .ThenInclude(u => u.Tenant)
+            .Include(t => t.User)
+                .ThenInclude(u => u.Department)
             .FirstOrDefaultAsync(t => t.Token == request.Token.Trim() 
                                    && t.User.Email.ToLower() == normalizedEmail, cancellationToken);
 
@@ -46,11 +48,19 @@ public class ValidateInvitationQueryHandler : IRequestHandler<ValidateInvitation
             return new InvitationValidationDto(false, "Mã kích hoạt đã hết hạn (quá thời hạn 48 giờ). Vui lòng liên hệ Quản trị viên để được cấp lại.");
         }
 
+        var role = await _context.UserRoles
+            .Where(ur => ur.UserId == tokenRecord.User.Id)
+            .Select(ur => ur.Role.Name)
+            .FirstOrDefaultAsync(cancellationToken);
+
         return new InvitationValidationDto(
             IsValid: true,
             Message: "Mã kích hoạt hợp lệ.",
             Email: tokenRecord.User.Email,
             FullName: tokenRecord.User.FullName,
-            TenantName: tokenRecord.User.Tenant?.Name ?? "Tổ chức");
+            TenantName: tokenRecord.User.Tenant?.Name ?? "Tổ chức",
+            Role: role,
+            DepartmentName: tokenRecord.User.Department?.Name,
+            TokenType: tokenRecord.TokenType);
     }
 }

@@ -10,11 +10,13 @@ public class UserStorageQuotaDto
 
     public long QuotaBytes { get; set; }
     public long UsedBytes { get; set; }
+    public int FileCount { get; set; }
     public long AvailableBytes => Math.Max(0, QuotaBytes - UsedBytes);
     public double UsagePercentage => QuotaBytes > 0 
         ? Math.Round((double)UsedBytes / QuotaBytes * 100, 2) 
         : 0;
 }
+
 
 public class DepartmentUsersQuotaSummaryDto
 {

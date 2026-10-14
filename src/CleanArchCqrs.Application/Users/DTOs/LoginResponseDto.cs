@@ -10,6 +10,7 @@ public sealed record LoginResponseDto(
     Guid? TenantId,
     List<string> Permissions,
     string RefreshToken,
-    DateTime RefreshTokenExpiresAt
+    DateTime RefreshTokenExpiresAt,
+    Guid? DepartmentId = null
 );
 

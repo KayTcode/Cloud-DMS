@@ -13,9 +13,9 @@ using Microsoft.Extensions.Logging;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
 using System.Text;
-using System.Threading.Tasks;
 using System.Security.Claims;
 using System.Threading.RateLimiting;
+using System.Threading.Tasks;
 using Microsoft.AspNetCore.RateLimiting;
 
 namespace CleanArchCqrs.API;
@@ -76,9 +76,11 @@ public class Program
             {
                 policy.WithOrigins(allowedOrigins)
                       .AllowAnyMethod()
-                      .AllowAnyHeader();
+                      .AllowAnyHeader()
+                      .AllowCredentials();
             });
         });
+
 
         // JWT Configuration: require a configured secret instead of silently accepting a default fallback key.
         var jwtSettings = builder.Configuration.GetSection("JwtSettings");
@@ -171,6 +173,19 @@ public class Program
             await DbInitializer.SeedDefaultDataAsync(context,
                 scope.ServiceProvider.GetRequiredService<CleanArchCqrs.Application.Common.Interfaces.IPasswordHasher>(),
                 scope.ServiceProvider.GetRequiredService<ILogger<Program>>());
+
+            try
+            {
+                var readiness = scope.ServiceProvider.GetRequiredService<CleanArchCqrs.Application.Common.Interfaces.ISecurityReadiness>();
+                var runId = await readiness.GetCurrentServerRunIdAsync(CancellationToken.None);
+                var generation = Guid.NewGuid().ToString("N");
+                await readiness.SetReadyAsync(generation, runId, CancellationToken.None);
+                scope.ServiceProvider.GetRequiredService<ILogger<Program>>().LogInformation("Security Redis readiness initialized successfully (RunId: {RunId}, Generation: {Gen}).", runId, generation);
+            }
+            catch (Exception exRedis)
+            {
+                scope.ServiceProvider.GetRequiredService<ILogger<Program>>().LogWarning(exRedis, "Security Redis readiness initialization skipped or Redis not reachable.");
+            }
         }
         // Configure pipeline
         if (app.Environment.IsDevelopment())
@@ -191,9 +206,9 @@ public class Program
             await next();
         });
         app.UseCors("AllowFrontend");
+        app.UseRateLimiter();
         app.UseAuthentication();
         app.UseAuthorization();
-        app.UseRateLimiter();
         app.MapControllers();
 
         await app.RunAsync();

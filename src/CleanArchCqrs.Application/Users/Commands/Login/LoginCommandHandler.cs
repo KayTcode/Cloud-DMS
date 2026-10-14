@@ -101,7 +101,8 @@ namespace CleanArchCqrs.Application.Users.Commands.Login
                 user.TenantId,
                 permissions.ToList(),
                 refreshToken,
-                refreshTokenExpiresAt);
+                refreshTokenExpiresAt,
+                user.DepartmentId);
         }
 
         private static string HashRefreshToken(string refreshToken)
