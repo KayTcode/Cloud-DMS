@@ -5,6 +5,9 @@ using CleanArchCqrs.Domain.Entities;
 using FluentValidation;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
+using System.Security.Cryptography;
+using System.Text;
+using DomainRefreshToken = CleanArchCqrs.Domain.Entities.RefreshToken;
 
 namespace CleanArchCqrs.Application.Users.Commands.AcceptInvitation;
 
@@ -112,9 +115,7 @@ public class AcceptInvitationCommandHandler : IRequestHandler<AcceptInvitationCo
             await _context.UserStorageQuotas.AddAsync(userQuota, cancellationToken);
         }
 
-        await _context.SaveChangesAsync(cancellationToken);
-
-        // 4. Generate JWT Token so Tenant Admin is immediately logged in
+        // 4. Generate JWT Token & Refresh Token so user is immediately logged in
         var role = await _userAuthorizationRepository.GetRoleAsync(user.Id, cancellationToken) ?? "TenantAdmin";
         var permissions = await _userAuthorizationRepository.GetPermissionsAsync(user.Id, cancellationToken);
 
@@ -122,6 +123,18 @@ public class AcceptInvitationCommandHandler : IRequestHandler<AcceptInvitationCo
 
         var refreshToken = Guid.NewGuid().ToString("N");
         var refreshTokenExpiresAt = DateTime.UtcNow.AddDays(7);
+        var refreshTokenHash = HashRefreshToken(refreshToken);
+
+        await _context.RefreshTokens.AddAsync(
+            new DomainRefreshToken(
+                Guid.NewGuid(),
+                user.Id,
+                refreshTokenHash,
+                refreshTokenExpiresAt,
+                null),
+            cancellationToken);
+
+        await _context.SaveChangesAsync(cancellationToken);
 
         return new LoginResponseDto(
             token.AccessToken,
@@ -133,6 +146,14 @@ public class AcceptInvitationCommandHandler : IRequestHandler<AcceptInvitationCo
             user.TenantId,
             permissions.ToList(),
             refreshToken,
-            refreshTokenExpiresAt);
+            refreshTokenExpiresAt,
+            user.DepartmentId);
+    }
+
+    private static string HashRefreshToken(string refreshToken)
+    {
+        using var sha256 = SHA256.Create();
+        var bytes = sha256.ComputeHash(Encoding.UTF8.GetBytes(refreshToken));
+        return Convert.ToHexString(bytes);
     }
 }

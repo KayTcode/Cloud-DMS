@@ -38,15 +38,29 @@ public class CreateDepartmentAdminCommandHandler : IRequestHandler<CreateDepartm
         var normalizedEmail = request.Email.Trim().ToLowerInvariant();
 
         // =========================================================================
-        // BƯỚC 1: KIỂM TRA TRÙNG LẶP EMAIL TRÊN TOÀN HỆ THỐNG
-        // Mỗi tài khoản trong hệ thống phải có email là duy nhất (không phân biệt hoa thường).
+        // BƯỚC 1: KIỂM TRA TRÙNG LẶP EMAIL VÀ TÁI TẠO TÀI KHOẢN XÓA MỀM (P2-01 / BUG-01)
+        // - Chỉ chặn nếu tài khoản đang hoạt động (IsActive = true).
+        // - Nếu đã bị xóa mềm (IsActive = false), cho phép tái tạo bằng cách đổi tên
+        //   email cũ sang dạng '{email}__deleted_{timestamp}' để giải phóng Unique Index.
         // =========================================================================
-        var emailExists = await _context.Users
-            .AnyAsync(u => u.Email.ToLower() == normalizedEmail, cancellationToken);
+        var existingUser = await _context.Users
+            .FirstOrDefaultAsync(u => u.Email.ToLower() == normalizedEmail, cancellationToken);
 
-        if (emailExists)
+        if (existingUser != null)
         {
-            return Result<UserDto>.Failure($"Email '{request.Email}' đã tồn tại trong hệ thống.");
+            if (existingUser.IsActive)
+            {
+                return Result<UserDto>.Failure($"Email '{request.Email}' đã tồn tại trong hệ thống.");
+            }
+
+            // Tài khoản cũ đã bị xóa mềm (IsActive = false).
+            // Đổi email bản ghi cũ sang dạng lưu trữ để giải phóng Unique Index trên cột Email cho bản ghi mới:
+            var suffix = $"__deleted_{DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()}";
+            var maxBaseLen = 256 - suffix.Length;
+            var baseEmail = existingUser.Email.Length > maxBaseLen
+                ? existingUser.Email[..maxBaseLen]
+                : existingUser.Email;
+            existingUser.Email = $"{baseEmail}{suffix}";
         }
 
         // =========================================================================
@@ -123,30 +137,33 @@ public class CreateDepartmentAdminCommandHandler : IRequestHandler<CreateDepartm
         }
         else
         {
-            // 4.3. Mô hình Self-Setup: Trưởng phòng chưa có phòng ban.
-            // Cấp một lượng Quota từ Tenant để Trưởng phòng tạm giữ và đem sang thiết lập phòng ban sau (SetupDepartmentCommand).
-            long quotaToAllocate = request.StorageQuotaBytes ?? 0L; // Mặc định 0 B nếu chưa chỉ định
+            // 4.3. Mô hình Self-Setup (DepartmentId để trống theo EARS-03):
+            // Cấp StorageQuotaBytes vào UserStorageQuota lấy từ dung lượng khả dụng của Tenant:
+            // tenant.StorageQuotaBytes - (existingDeptsQuota + pendingAdminsQuota)
+            var existingDeptsQuota = await _context.Departments
+                .Where(d => d.TenantId == tenant.Id)
+                .SumAsync(d => d.StorageQuotaBytes, cancellationToken);
 
-            if (quotaToAllocate > 0)
+            var pendingAdminsQuota = await _context.UserStorageQuotas
+                .Where(q => q.User.TenantId == tenant.Id && q.User.DepartmentId == null)
+                .SumAsync(q => q.QuotaBytes, cancellationToken);
+
+            var availableInTenant = Math.Max(0, tenant.StorageQuotaBytes - (existingDeptsQuota + pendingAdminsQuota));
+
+            if (request.StorageQuotaBytes.HasValue && request.StorageQuotaBytes.Value > 0)
             {
-                var existingDeptsQuota = await _context.Departments
-                    .Where(d => d.TenantId == tenant.Id)
-                    .SumAsync(d => d.StorageQuotaBytes, cancellationToken);
-
-                var pendingAdminsQuota = await _context.UserStorageQuotas
-                    .Where(q => q.User.TenantId == tenant.Id && q.User.DepartmentId == null)
-                    .SumAsync(q => q.QuotaBytes, cancellationToken);
-
-                var availableInTenant = Math.Max(0, tenant.StorageQuotaBytes - (existingDeptsQuota + pendingAdminsQuota));
-
-                if (quotaToAllocate > availableInTenant)
+                if (request.StorageQuotaBytes.Value > availableInTenant)
                 {
                     return Result<UserDto>.Failure(
-                        $"Hạn mức yêu cầu ({FormatBytes(quotaToAllocate)}) vượt quá dung lượng khả dụng của Tổ chức (Tenant còn trống: {FormatBytes(availableInTenant)}).");
+                        $"Hạn mức yêu cầu ({FormatBytes(request.StorageQuotaBytes.Value)}) vượt quá dung lượng khả dụng của Tổ chức (Tenant còn trống: {FormatBytes(availableInTenant)}).");
                 }
+                personalQuotaBytes = request.StorageQuotaBytes.Value;
             }
-
-            personalQuotaBytes = quotaToAllocate;
+            else
+            {
+                // Khi không chỉ định cụ thể, cấp toàn bộ dung lượng khả dụng của Tenant vào ví tạm của Trưởng phòng
+                personalQuotaBytes = availableInTenant;
+            }
         }
 
         // =========================================================================
@@ -161,13 +178,12 @@ public class CreateDepartmentAdminCommandHandler : IRequestHandler<CreateDepartm
         }
 
         // =========================================================================
-        // BƯỚC 6: XÁC ĐỊNH HÌNH THỨC TẠO TÀI KHOẢN (MỜI QUA EMAIL HAY TẠO TRỰC TIẾP)
-        // - Nếu mật khẩu để trống: Coi như lời mời (isInvitation = true).
-        //   Sinh mật khẩu tạm thời ngẫu nhiên và tài khoản ở trạng thái chưa kích hoạt.
-        // - Nếu có truyền mật khẩu: Tài khoản được kích hoạt ngay lập tức.
+        // BƯỚC 6: KHỞI TẠO TÀI KHOẢN TRƯỞNG PHÒNG (100% INVITATION-FIRST)
+        // - Hệ thống sinh mật khẩu ngẫu nhiên tạm thời (GUID) và băm an toàn bằng BCrypt.
+        // - Tài khoản luôn khởi tạo ở trạng thái chưa kích hoạt (IsActive = false, EmailConfirmed = false).
+        // - Trưởng phòng sẽ nhận email và tự đặt mật khẩu qua usecase AcceptInvitation.
         // =========================================================================
-        var isInvitation = string.IsNullOrEmpty(request.Password);
-        var initialPassword = isInvitation ? Guid.NewGuid().ToString("N") : request.Password!;
+        var initialPassword = Guid.NewGuid().ToString("N");
 
         // Khởi tạo Entity Người dùng (User)
         var user = new User
@@ -182,8 +198,8 @@ public class CreateDepartmentAdminCommandHandler : IRequestHandler<CreateDepartm
             Tenant = tenant,
             DepartmentId = department?.Id,
             Department = department,
-            IsActive = !isInvitation,
-            EmailConfirmed = !isInvitation
+            IsActive = false,
+            EmailConfirmed = false
         };
 
         // =========================================================================
@@ -216,21 +232,17 @@ public class CreateDepartmentAdminCommandHandler : IRequestHandler<CreateDepartm
         await _context.UserStorageQuotas.AddAsync(adminStorageQuota, cancellationToken);
 
         // =========================================================================
-        // BƯỚC 9: XỬ LÝ LỜI MỜI VÀ TOKEN KÍCH HOẠT (NẾU MỜI QUA GMAIL)
+        // BƯỚC 9: SINH TOKEN MỜI KÍCH HOẠT TÀI KHOẢN (THỜI HẠN 48 GIỜ)
         // =========================================================================
-        string? tokenString = null;
-        if (isInvitation)
-        {
-            tokenString = Guid.NewGuid().ToString("N") + Guid.NewGuid().ToString("N");
-            var invitationToken = new EmailVerificationToken(
-                id: Guid.NewGuid(),
-                userId: user.Id,
-                token: tokenString,
-                tokenType: "DepartmentAdminInvitation",
-                expirationHours: 48);
+        var tokenString = Guid.NewGuid().ToString("N") + Guid.NewGuid().ToString("N");
+        var invitationToken = new EmailVerificationToken(
+            id: Guid.NewGuid(),
+            userId: user.Id,
+            token: tokenString,
+            tokenType: "DepartmentAdminInvitation",
+            expirationHours: 48);
 
-            await _context.EmailVerificationTokens.AddAsync(invitationToken, cancellationToken);
-        }
+        await _context.EmailVerificationTokens.AddAsync(invitationToken, cancellationToken);
 
         // =========================================================================
         // BƯỚC 10: GHI LỊCH SỬ KIỂM TOÁN (AUDIT LOG)
@@ -240,12 +252,12 @@ public class CreateDepartmentAdminCommandHandler : IRequestHandler<CreateDepartm
             Id = Guid.NewGuid(),
             TenantId = tenant.Id,
             UserId = user.Id,
-            Action = isInvitation ? "InviteDepartmentAdminWithQuota" : "CreateDepartmentAdminWithQuota",
+            Action = "InviteDepartmentAdminWithQuota",
             EntityName = "User",
             EntityId = user.Id,
             Details = department != null
-                ? $"Tạo/Mời Trưởng phòng '{user.FullName}' cho phòng '{department.Name}'. Hạn mức cá nhân: {FormatBytes(personalQuotaBytes)}."
-                : $"Tạo/Mời Trưởng phòng '{user.FullName}' (chờ tự thiết lập phòng ban). Cấp ngân sách thiết lập: {FormatBytes(personalQuotaBytes)}.",
+                ? $"Mời Trưởng phòng '{user.FullName}' cho phòng '{department.Name}'. Hạn mức cá nhân: {FormatBytes(personalQuotaBytes)}."
+                : $"Mời Trưởng phòng '{user.FullName}' (chờ tự thiết lập phòng ban). Cấp ngân sách thiết lập: {FormatBytes(personalQuotaBytes)}.",
             CreatedAt = DateTime.UtcNow
         };
         _context.AuditLogs.Add(auditLog);
@@ -254,25 +266,22 @@ public class CreateDepartmentAdminCommandHandler : IRequestHandler<CreateDepartm
         await _context.SaveChangesAsync(cancellationToken);
 
         // =========================================================================
-        // BƯỚC 11: GỬI GMAIL MỜI TRƯỞNG PHÒNG KÍCH HOẠT TÀI KHOẢN (NẾU LÀ INVITATION)
+        // BƯỚC 11: GỬI GMAIL MỜI TRƯỞNG PHÒNG KÍCH HOẠT TÀI KHOẢN
         // =========================================================================
-        if (isInvitation && !string.IsNullOrEmpty(tokenString))
+        try
         {
-            try
-            {
-                await _emailService.SendDepartmentAdminInvitationAsync(
-                    toEmail: user.Email,
-                    recipientName: user.FullName,
-                    tenantName: tenant.Name,
-                    departmentName: department?.Name,
-                    token: tokenString,
-                    cancellationToken: cancellationToken);
-            }
-            catch
-            {
-                // Không để lỗi SMTP làm đứt luồng tạo tài khoản
-                // Token kích hoạt vẫn an toàn trong DB và user có thể nhận lại link
-            }
+            await _emailService.SendDepartmentAdminInvitationAsync(
+                toEmail: user.Email,
+                recipientName: user.FullName,
+                tenantName: tenant.Name,
+                departmentName: department?.Name,
+                token: tokenString,
+                cancellationToken: cancellationToken);
+        }
+        catch
+        {
+            // Không để lỗi SMTP làm đứt luồng tạo tài khoản
+            // Token kích hoạt vẫn an toàn trong DB và user có thể nhận lại link
         }
 
         // =========================================================================

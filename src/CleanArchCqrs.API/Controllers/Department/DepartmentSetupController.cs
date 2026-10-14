@@ -1,5 +1,7 @@
 using CleanArchCqrs.Application.Common.Models;
 using CleanArchCqrs.Application.Features.DepartmentAdmin.Commands.SetupDepartment;
+using CleanArchCqrs.Application.Features.DepartmentAdmin.DTOs;
+using CleanArchCqrs.Application.Features.DepartmentAdmin.Queries.GetDepartmentSetupInfo;
 using CleanArchCqrs.Application.Features.TenantAdmin.DTOs;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
@@ -14,10 +16,23 @@ namespace CleanArchCqrs.API.Controllers.Department;
 public class DepartmentSetupController : ApiControllerBase
 {
     /// <summary>
+    /// Lấy thông tin khởi tạo phòng ban bao gồm Quota ví tạm mà TenantAdmin đã phân bổ cho Trưởng phòng.
+    /// </summary>
+    [Authorize(Policy = "department.manage")]
+    [HttpGet("setup-info")]
+    [ProducesResponseType(typeof(Result<DepartmentSetupInfoDto>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(Result), StatusCodes.Status400BadRequest)]
+    public async Task<ActionResult> GetSetupInfo()
+    {
+        var result = await Sender.Send(new GetDepartmentSetupInfoQuery());
+        return HandleResult(result);
+    }
+
+    /// <summary>
     /// Trưởng phòng tự thiết lập thông tin phòng ban (Tên, Mã phòng, Thư mục gốc) từ vùng nhớ Quota được cấp.
     /// </summary>
     /// <param name="request">Thông tin phòng ban cần thiết lập.</param>
-    [Authorize(Policy = "department.create")]
+    [Authorize(Policy = "department.manage")]
     [HttpPost("setup")]
     [ProducesResponseType(typeof(Result<DepartmentDto>), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(Result), StatusCodes.Status400BadRequest)]

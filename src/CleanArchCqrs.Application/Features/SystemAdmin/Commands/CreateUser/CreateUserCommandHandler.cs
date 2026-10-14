@@ -30,13 +30,25 @@ public class CreateUserCommandHandler : IRequestHandler<CreateUserCommand, Resul
     {
         var normalizedEmail = request.Email.Trim().ToLowerInvariant();
 
-        // 1. Check duplicate email
-        var emailExists = await _context.Users
-            .AnyAsync(u => u.Email.ToLower() == normalizedEmail, cancellationToken);
+        // 1. Check duplicate email (Chỉ chặn nếu tài khoản đang Active. Nếu đã bị Soft-Delete thì cho phép tái tạo)
+        var existingUser = await _context.Users
+            .FirstOrDefaultAsync(u => u.Email.ToLower() == normalizedEmail, cancellationToken);
 
-        if (emailExists)
+        if (existingUser != null)
         {
-            return Result<UserDto>.Failure($"A user with email '{request.Email}' already exists.");
+            if (existingUser.IsActive)
+            {
+                return Result<UserDto>.Failure($"A user with email '{request.Email}' already exists.");
+            }
+
+            // Tài khoản cũ đã bị xóa mềm (IsActive = false).
+            // Đổi email bản ghi cũ sang dạng lưu trữ để giải phóng Unique Index trên cột Email cho bản ghi mới:
+            var suffix = $"__deleted_{DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()}";
+            var maxBaseLen = 256 - suffix.Length;
+            var baseEmail = existingUser.Email.Length > maxBaseLen
+                ? existingUser.Email[..maxBaseLen]
+                : existingUser.Email;
+            existingUser.Email = $"{baseEmail}{suffix}";
         }
 
         // 2. Handle Tenant Provisioning or Validation

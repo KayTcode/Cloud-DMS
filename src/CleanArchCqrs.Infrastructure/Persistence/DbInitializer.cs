@@ -57,6 +57,7 @@ namespace CleanArchCqrs.Infrastructure.Persistence
                 ["user.create"] = "Create users",
                 ["user.update"] = "Update users",
                 ["user.delete"] = "Delete users",
+                ["user.manage"] = "Manage users",
 
                 ["role.read"] = "View roles",
                 ["role.manage"] = "Manage roles",
@@ -65,6 +66,7 @@ namespace CleanArchCqrs.Infrastructure.Persistence
                 ["department.create"] = "Create departments",
                 ["department.update"] = "Update departments",
                 ["department.delete"] = "Delete departments",
+                ["department.manage"] = "Manage departments",
 
                 ["file.read"] = "View files",
                 ["file.upload"] = "Upload files",
@@ -80,7 +82,11 @@ namespace CleanArchCqrs.Infrastructure.Persistence
                 ["storage.read"] = "View storage information",
                 ["storage.manage"] = "Manage storage",
 
-                ["audit.read"] = "View audit logs"
+                ["audit.read"] = "View audit logs",
+
+                ["system.manage"] = "Manage system",
+                ["quota.department.allocate"] = "Allocate department quota",
+                ["quota.user.allocate"] = "Allocate user quota"
             };
 
             foreach (var item in permissions)
@@ -184,6 +190,7 @@ namespace CleanArchCqrs.Infrastructure.Persistence
                     "user.create",
                     "user.update",
                     "user.delete",
+                    "user.manage",
 
                     "role.read",
                     "role.manage",
@@ -192,6 +199,7 @@ namespace CleanArchCqrs.Infrastructure.Persistence
                     "department.create",
                     "department.update",
                     "department.delete",
+                    "department.manage",
 
                     "file.read",
                     "file.upload",
@@ -207,7 +215,10 @@ namespace CleanArchCqrs.Infrastructure.Persistence
                     "storage.read",
                     "storage.manage",
 
-                    "audit.read"
+                    "audit.read",
+
+                    "quota.department.allocate",
+                    "quota.user.allocate"
                 ],
 
                 ["DepartmentAdmin"] =
@@ -215,8 +226,10 @@ namespace CleanArchCqrs.Infrastructure.Persistence
                     "user.read",
                     "user.create",
                     "user.update",
+                    "user.manage",
 
                     "department.read",
+                    "department.manage",
 
                     "file.read",
                     "file.upload",
@@ -232,7 +245,9 @@ namespace CleanArchCqrs.Infrastructure.Persistence
                     "storage.read",
                     "storage.manage",
 
-                    "audit.read"
+                    "audit.read",
+
+                    "quota.user.allocate"
                 ],
 
                 ["Manager"] =

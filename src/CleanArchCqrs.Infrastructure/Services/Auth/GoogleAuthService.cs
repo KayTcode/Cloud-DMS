@@ -295,7 +295,8 @@ public sealed class GoogleAuthService : IGoogleAuthService
             user.TenantId,
             permissions.ToList(),
             refreshToken,
-            refreshTokenExpiresAt);
+            refreshTokenExpiresAt,
+            user.DepartmentId);
 
         var returnUrl = session.ReturnUrl;
         return new GoogleLoginResultDto(login, returnUrl);
@@ -411,7 +412,7 @@ public sealed class GoogleAuthService : IGoogleAuthService
 
         if (uri.IsLoopback && (uri.Host.Equals("localhost", StringComparison.OrdinalIgnoreCase) || uri.Host.Equals("127.0.0.1", StringComparison.OrdinalIgnoreCase)))
         {
-            return uri.PathAndQuery;
+            return uri.ToString();
         }
 
         return null;

@@ -13,7 +13,9 @@ using Microsoft.Extensions.Logging;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
 using System.Text;
+using System.Threading.RateLimiting;
 using System.Threading.Tasks;
+using Microsoft.AspNetCore.RateLimiting;
 
 namespace CleanArchCqrs.API;
 
@@ -40,8 +42,37 @@ public class Program
             {
                 policy.WithOrigins(allowedOrigins)
                       .AllowAnyMethod()
-                      .AllowAnyHeader();
+                      .AllowAnyHeader()
+                      .AllowCredentials();
             });
+        });
+
+        // Rate Limiting configuration: protects auth and upload endpoints against abuse/brute-force
+        builder.Services.AddRateLimiter(options =>
+        {
+            options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+
+            options.AddPolicy("auth", httpContext =>
+                RateLimitPartition.GetFixedWindowLimiter(
+                    partitionKey: httpContext.Connection.RemoteIpAddress?.ToString() ?? "anonymous",
+                    factory: _ => new FixedWindowRateLimiterOptions
+                    {
+                        PermitLimit = 30,
+                        Window = TimeSpan.FromMinutes(1),
+                        QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
+                        QueueLimit = 0
+                    }));
+
+            options.AddPolicy("upload", httpContext =>
+                RateLimitPartition.GetFixedWindowLimiter(
+                    partitionKey: httpContext.Connection.RemoteIpAddress?.ToString() ?? "anonymous",
+                    factory: _ => new FixedWindowRateLimiterOptions
+                    {
+                        PermitLimit = 60,
+                        Window = TimeSpan.FromMinutes(1),
+                        QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
+                        QueueLimit = 0
+                    }));
         });
 
         // JWT Configuration: require a configured secret instead of silently accepting a default fallback key.
@@ -246,7 +277,35 @@ public class Program
                     try
                     {
                         await context.Database.ExecuteSqlRawAsync(@"
-                            ALTER TABLE `FileEntries` ADD COLUMN `ScanStatus` varchar(50) NOT NULL DEFAULT 'Clean';");
+                            ALTER TABLE `AuthorizationOperations` ADD COLUMN `InitiatedByUserId` char(36) COLLATE ascii_general_ci NULL;");
+                    }
+                    catch { /* column already exists */ }
+
+                    try
+                    {
+                        await context.Database.ExecuteSqlRawAsync(@"
+                            ALTER TABLE `Folders` ADD COLUMN `DepartmentId` char(36) COLLATE ascii_general_ci NULL;");
+                    }
+                    catch { /* column already exists */ }
+
+                    try
+                    {
+                        await context.Database.ExecuteSqlRawAsync(@"
+                            ALTER TABLE `FileEntries` ADD COLUMN `DepartmentId` char(36) COLLATE ascii_general_ci NULL;");
+                    }
+                    catch { /* column already exists */ }
+
+                    try
+                    {
+                        await context.Database.ExecuteSqlRawAsync(@"
+                            ALTER TABLE `Departments` ADD COLUMN `StorageQuotaBytes` bigint NOT NULL DEFAULT 0;");
+                    }
+                    catch { /* column already exists */ }
+
+                    try
+                    {
+                        await context.Database.ExecuteSqlRawAsync(@"
+                            ALTER TABLE `Departments` ADD COLUMN `StorageUsedBytes` bigint NOT NULL DEFAULT 0;");
                     }
                     catch { /* column already exists */ }
                 }
@@ -257,6 +316,19 @@ public class Program
 
                 var passwordHasher = services.GetRequiredService<CleanArchCqrs.Application.Common.Interfaces.IPasswordHasher>();
                 await DbInitializer.SeedDefaultDataAsync(context, passwordHasher, logger);
+
+                try
+                {
+                    var readiness = services.GetRequiredService<CleanArchCqrs.Application.Common.Interfaces.ISecurityReadiness>();
+                    var runId = await readiness.GetCurrentServerRunIdAsync(CancellationToken.None);
+                    var generation = Guid.NewGuid().ToString("N");
+                    await readiness.SetReadyAsync(generation, runId, CancellationToken.None);
+                    logger.LogInformation("Security Redis readiness initialized successfully (RunId: {RunId}, Generation: {Gen}).", runId, generation);
+                }
+                catch (Exception exRedis)
+                {
+                    logger.LogWarning(exRedis, "Security Redis readiness initialization skipped or Redis not reachable.");
+                }
             }
             catch (Exception ex)
             {
@@ -276,6 +348,7 @@ public class Program
 
         app.UseMiddleware<CleanArchCqrs.API.Middleware.GlobalExceptionHandlerMiddleware>();
         app.UseCors("AllowFrontend");
+        app.UseRateLimiter();
         app.UseAuthentication();
         app.UseAuthorization();
         app.MapControllers();

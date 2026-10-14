@@ -58,9 +58,36 @@ public class GetTenantFilesQueryHandler : IRequestHandler<GetTenantFilesQuery, R
             .Include(f => f.StorageProvider)
             .Where(f => f.TenantId == tenant.Id && !f.IsDeleted);
 
+        // Xác định Department Scope
+        Guid? targetDepartmentId = request.DepartmentId;
+        if (!targetDepartmentId.HasValue && (_currentUserService.Role == "DepartmentAdmin" || _currentUserService.Role == "Employee"))
+        {
+            targetDepartmentId = _currentUserService.DepartmentId ?? currentUser.DepartmentId;
+        }
+
+        CleanArchCqrs.Domain.Entities.Department? department = null;
+        if (targetDepartmentId.HasValue)
+        {
+            department = await _context.Departments
+                .FirstOrDefaultAsync(d => d.Id == targetDepartmentId.Value && d.TenantId == tenant.Id && d.IsActive, cancellationToken);
+
+            if (department == null)
+            {
+                return Result<TenantStorageSummaryDto>.Failure("Phòng ban không tồn tại hoặc không thuộc tổ chức này.");
+            }
+
+            query = query.Where(f => f.DepartmentId == targetDepartmentId.Value || f.OwningDepartmentId == targetDepartmentId.Value);
+        }
+
         if (request.FolderId.HasValue)
         {
             query = query.Where(f => f.FolderId == request.FolderId.Value);
+        }
+
+        if (!string.IsNullOrWhiteSpace(request.SearchTerm))
+        {
+            var term = request.SearchTerm.Trim().ToLower();
+            query = query.Where(f => f.Name.ToLower().Contains(term));
         }
 
         var files = await query
@@ -86,14 +113,14 @@ public class GetTenantFilesQueryHandler : IRequestHandler<GetTenantFilesQuery, R
             ))
             .ToListAsync(cancellationToken);
 
-        long quota = tenant.StorageQuotaBytes;
-        long used = tenant.StorageUsedBytes;
+        long quota = department != null ? department.StorageQuotaBytes : tenant.StorageQuotaBytes;
+        long used = department != null ? department.StorageUsedBytes : tenant.StorageUsedBytes;
         long available = Math.Max(0, quota - used);
         double usagePercent = quota > 0 ? Math.Round((double)used / quota * 100, 2) : 0;
 
         var summary = new TenantStorageSummaryDto(
             tenant.Id,
-            tenant.Name,
+            department != null ? $"{tenant.Name} - {department.Name}" : tenant.Name,
             quota,
             used,
             available,

@@ -52,6 +52,7 @@ public class UserLoginAndAuditTests
         // Arrange
         using var context = TestDbContextFactory.Create();
         var user = new User(Guid.NewGuid(), null, "john@test.com", "hashed_password", "John", "Doe", null);
+        user.EmailConfirmed = true;
         context.Users.Add(user);
         await context.SaveChangesAsync();
 

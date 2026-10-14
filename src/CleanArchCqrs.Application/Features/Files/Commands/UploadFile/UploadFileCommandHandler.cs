@@ -1,3 +1,4 @@
+using System.Data;
 using System.Security.Cryptography;
 using CleanArchCqrs.Application.Common.Interfaces;
 using CleanArchCqrs.Application.Common.Models;
@@ -39,12 +40,26 @@ public class UploadFileCommandHandler : IRequestHandler<UploadFileCommand, Resul
             return Result<FileEntryDto>.Failure("Yêu cầu không hợp lệ: Chưa xác thực danh tính người dùng.");
         }
 
+        Guid? currentTenantId = _currentUserService.TenantId;
+
+        // BẢO MẬT: Chống giả mạo UserId
         if (request.UserIdOverride.HasValue && request.UserIdOverride != currentUserId)
         {
+            _logger.LogWarning("Security Alert: User {UserId} attempted unauthorized UserIdOverride to {OverrideId}", currentUserId, request.UserIdOverride);
+            _context.AuditLogs.Add(new AuditLog
+            {
+                Id = Guid.NewGuid(),
+                TenantId = currentTenantId ?? Guid.Empty,
+                UserId = currentUserId.Value,
+                Action = "SecurityTamperingAttempt",
+                EntityName = "FileEntry",
+                Details = $"CẢNH BÁO BẢO MẬT: Người dùng cố gắng thay đổi UserId thành '{request.UserIdOverride}' khi tải lên tệp tin.",
+                CreatedAt = DateTime.UtcNow
+            });
+            await _context.SaveChangesAsync(cancellationToken);
             return Result<FileEntryDto>.Failure("Không được phép thay đổi người dùng tải lên.");
         }
 
-        Guid? currentTenantId = _currentUserService.TenantId;
         var user = await _context.Users
             .Include(u => u.Tenant)
             .FirstOrDefaultAsync(u => u.Id == currentUserId.Value && u.IsActive, cancellationToken);
@@ -60,28 +75,77 @@ public class UploadFileCommandHandler : IRequestHandler<UploadFileCommand, Resul
             return Result<FileEntryDto>.Failure("Người dùng hiện tại chưa được liên kết với bất kỳ Tổ chức/Tenant nào.");
         }
 
+        // BẢO MẬT: Chống giả mạo TenantId
         if (request.TenantIdOverride.HasValue && request.TenantIdOverride != tenantId)
         {
+            _logger.LogWarning("Security Alert: User {UserId} attempted unauthorized TenantIdOverride to {OverrideTenantId}", currentUserId, request.TenantIdOverride);
+            _context.AuditLogs.Add(new AuditLog
+            {
+                Id = Guid.NewGuid(),
+                TenantId = tenantId.Value,
+                UserId = currentUserId.Value,
+                Action = "SecurityTamperingAttempt",
+                EntityName = "FileEntry",
+                Details = $"CẢNH BÁO BẢO MẬT: Người dùng cố gắng thay đổi TenantId thành '{request.TenantIdOverride}' khi tải lên tệp tin.",
+                CreatedAt = DateTime.UtcNow
+            });
+            await _context.SaveChangesAsync(cancellationToken);
             return Result<FileEntryDto>.Failure("Không được phép thay đổi tenant tải lên.");
         }
 
+        // BẢO MẬT: Chống giả mạo StorageProviderId
         if (request.StorageProviderIdOverride.HasValue && request.StorageProviderIdOverride != (user.Tenant?.StorageProviderId ?? Guid.Empty))
         {
+            _logger.LogWarning("Security Alert: User {UserId} attempted unauthorized StorageProviderIdOverride to {OverrideProviderId}", currentUserId, request.StorageProviderIdOverride);
+            _context.AuditLogs.Add(new AuditLog
+            {
+                Id = Guid.NewGuid(),
+                TenantId = tenantId.Value,
+                UserId = currentUserId.Value,
+                Action = "SecurityTamperingAttempt",
+                EntityName = "FileEntry",
+                Details = $"CẢNH BÁO BẢO MẬT: Người dùng cố gắng thay đổi StorageProviderId thành '{request.StorageProviderIdOverride}' khi tải lên tệp tin.",
+                CreatedAt = DateTime.UtcNow
+            });
+            await _context.SaveChangesAsync(cancellationToken);
             return Result<FileEntryDto>.Failure("Không được phép thay đổi nhà cung cấp lưu trữ.");
         }
 
         Guid userId = currentUserId.Value;
 
+        // Kiểm tra Tenant còn hoạt động (IsActive)
         var tenant = await _context.Tenants
             .Include(t => t.StorageProvider)
-            .FirstOrDefaultAsync(t => t.Id == tenantId.Value, cancellationToken);
+            .FirstOrDefaultAsync(t => t.Id == tenantId.Value && t.IsActive, cancellationToken);
 
         if (tenant == null)
         {
-            return Result<FileEntryDto>.Failure("Không tìm thấy thông tin Tenant tương ứng.");
+            return Result<FileEntryDto>.Failure("Tổ chức/Tenant không tồn tại hoặc đã bị khóa/vô hiệu hóa.");
         }
 
-        // BƯỚC 1: Kiểm tra Quota
+        // BẢO MẬT (Anti-BOLA/IDOR): Xác thực thư mục đích nếu có chỉ định
+        if (request.FolderId.HasValue)
+        {
+            var targetFolder = await _context.Folders
+                .FirstOrDefaultAsync(f => f.Id == request.FolderId.Value && f.TenantId == tenant.Id, cancellationToken);
+
+            if (targetFolder == null)
+            {
+                return Result<FileEntryDto>.Failure("Thư mục đích không tồn tại hoặc bạn không có quyền truy cập.");
+            }
+
+            // Kiểm tra phân quyền phòng ban cho Employee hoặc DepartmentAdmin
+            var userRole = _currentUserService.Role;
+            if (userRole == "Employee" || userRole == "DepartmentAdmin")
+            {
+                if (user.DepartmentId.HasValue && targetFolder.DepartmentId.HasValue && targetFolder.DepartmentId != user.DepartmentId)
+                {
+                    return Result<FileEntryDto>.Failure("Thư mục đích không thuộc quyền quản lý của phòng ban bạn.");
+                }
+            }
+        }
+
+        // BƯỚC 1: Kiểm tra sơ bộ Quota trước khi upload
         // 1.1 Kiểm tra Quota của Tenant
         if (tenant.StorageUsedBytes + request.FileSize > tenant.StorageQuotaBytes)
         {
@@ -109,10 +173,10 @@ public class UploadFileCommandHandler : IRequestHandler<UploadFileCommand, Resul
 
         provider ??= tenant.StorageProvider;
 
-        if (provider == null)
+        if (provider == null || !provider.IsActive)
         {
             return Result<FileEntryDto>.Failure(
-                $"Tổ chức '{tenant.Name}' chưa được cấu hình Nhà cung cấp lưu trữ (Storage Provider: Google Drive / OneDrive / Local). Vui lòng liên hệ Quản trị viên hệ thống để gán Provider!");
+                $"Tổ chức '{tenant.Name}' chưa có Nhà cung cấp lưu trữ hợp lệ hoặc Provider đã bị vô hiệu hóa. Vui lòng liên hệ Quản trị viên hệ thống!");
         }
 
         if (provider.TotalCapacityBytes > 0 && provider.UsedCapacityBytes + request.FileSize > provider.TotalCapacityBytes)
@@ -121,8 +185,16 @@ public class UploadFileCommandHandler : IRequestHandler<UploadFileCommand, Resul
                 $"Kho lưu trữ đám mây '{provider.Name}' ({provider.Type}) đã đầy dung lượng!");
         }
 
+        // Làm sạch tên tệp tin chống Path Traversal và ký tự đặc biệt
+        var safeFileName = Path.GetFileName(request.FileName);
+        safeFileName = string.Join("_", safeFileName.Split(Path.GetInvalidFileNameChars()));
+        if (string.IsNullOrWhiteSpace(safeFileName))
+        {
+            safeFileName = "unnamed_file";
+        }
+
         // BƯỚC 2: Quét Virus (ClamAV)
-        _logger.LogInformation("Scanning file {FileName} ({SizeBytes} bytes) with ClamAV...", request.FileName, request.FileSize);
+        _logger.LogInformation("Scanning file {FileName} ({SizeBytes} bytes) with ClamAV...", safeFileName, request.FileSize);
         var scanResult = await _virusScannerService.ScanStreamAsync(request.FileStream, cancellationToken);
 
         if (scanResult.IsInfected)
@@ -137,7 +209,7 @@ public class UploadFileCommandHandler : IRequestHandler<UploadFileCommand, Resul
                 UserId = userId,
                 Action = "VirusDetected",
                 EntityName = "FileEntry",
-                Details = $"CẢNH BÁO BẢO MẬT: Phát hiện mã độc '{scanResult.ThreatName}' trong tệp tin '{request.FileName}'. Đã chặn tải lên.",
+                Details = $"CẢNH BÁO BẢO MẬT: Phát hiện mã độc '{scanResult.ThreatName}' trong tệp tin '{safeFileName}'. Đã chặn tải lên.",
                 CreatedAt = DateTime.UtcNow
             };
             _context.AuditLogs.Add(malwareAuditLog);
@@ -174,7 +246,7 @@ public class UploadFileCommandHandler : IRequestHandler<UploadFileCommand, Resul
         {
             storageKey = await storageService.UploadFileAsync(
                 request.FileStream,
-                request.FileName,
+                safeFileName,
                 request.ContentType,
                 destinationFolderId,
                 cancellationToken);
@@ -185,14 +257,16 @@ public class UploadFileCommandHandler : IRequestHandler<UploadFileCommand, Resul
             return Result<FileEntryDto>.Failure($"Lỗi khi tải tệp tin lên nhà cung cấp lưu trữ ({provider.Name}): {ex.Message}");
         }
 
-        // BƯỚC 5: Cập nhật CSDL (Atomic Persistence & Quota updates)
+        // BƯỚC 5: Cập nhật CSDL trong Transaction an toàn & Bồi hoàn nếu thất bại
         var fileEntry = new FileEntry
         {
             Id = Guid.NewGuid(),
             TenantId = tenant.Id,
+            DepartmentId = user.DepartmentId,
+            OwningDepartmentId = user.DepartmentId,
             OwnerId = userId,
             FolderId = request.FolderId,
-            Name = request.FileName,
+            Name = safeFileName,
             StorageKey = storageKey,
             ContentType = request.ContentType,
             SizeBytes = request.FileSize,
@@ -203,21 +277,6 @@ public class UploadFileCommandHandler : IRequestHandler<UploadFileCommand, Resul
             CreatedAt = DateTime.UtcNow
         };
 
-        _context.FileEntries.Add(fileEntry);
-
-        // Cập nhật dung lượng Tenant
-        tenant.StorageUsedBytes += request.FileSize;
-
-        // Cập nhật dung lượng Provider
-        provider.UsedCapacityBytes += request.FileSize;
-
-        // Cập nhật dung lượng cá nhân User nếu có
-        if (userQuota != null)
-        {
-            userQuota.UsedBytes += request.FileSize;
-        }
-
-        // Ghi AuditLog
         var auditLog = new AuditLog
         {
             Id = Guid.NewGuid(),
@@ -226,15 +285,9 @@ public class UploadFileCommandHandler : IRequestHandler<UploadFileCommand, Resul
             Action = "Upload",
             EntityName = "FileEntry",
             EntityId = fileEntry.Id,
-            Details = $"Tải lên thành công '{request.FileName}' ({FormatBytes(request.FileSize)}) vào {provider.Name} ({provider.Type}). Khóa lưu trữ: {storageKey}.",
+            Details = $"Tải lên thành công '{safeFileName}' ({FormatBytes(request.FileSize)}) vào {provider.Name} ({provider.Type}). Khóa lưu trữ: {storageKey}.",
             CreatedAt = DateTime.UtcNow
         };
-        _context.AuditLogs.Add(auditLog);
-
-        await _context.SaveChangesAsync(cancellationToken);
-
-        _logger.LogInformation("Successfully uploaded file {FileName} with ID {FileId} to {ProviderType}", 
-            request.FileName, fileEntry.Id, provider.Type);
 
         var dto = new FileEntryDto(
             fileEntry.Id,
@@ -254,7 +307,102 @@ public class UploadFileCommandHandler : IRequestHandler<UploadFileCommand, Resul
             fileEntry.CreatedAt
         );
 
-        return Result<FileEntryDto>.Success(dto);
+        try
+        {
+            var strategy = _context.Database.CreateExecutionStrategy();
+            return await strategy.ExecuteAsync(async () =>
+            {
+                await using var transaction = await _context.Database.BeginTransactionAsync(
+                    IsolationLevel.Serializable, cancellationToken);
+                try
+                {
+                    // Kiểm tra lại Quota trong transaction Serializable để chống TOCTOU race condition
+                    var lockedTenant = await _context.Tenants
+                        .FirstOrDefaultAsync(t => t.Id == tenant.Id, cancellationToken);
+                    if (lockedTenant == null || !lockedTenant.IsActive)
+                    {
+                        await transaction.RollbackAsync(cancellationToken);
+                        throw new InvalidOperationException("Tổ chức/Tenant không tồn tại hoặc đã bị khóa.");
+                    }
+
+                    if (lockedTenant.StorageUsedBytes + request.FileSize > lockedTenant.StorageQuotaBytes)
+                    {
+                        await transaction.RollbackAsync(cancellationToken);
+                        throw new InvalidOperationException($"Hết dung lượng lưu trữ của Tenant! (Đã dùng: {FormatBytes(lockedTenant.StorageUsedBytes)} / Hạn mức: {FormatBytes(lockedTenant.StorageQuotaBytes)}).");
+                    }
+
+                    UserStorageQuota? lockedUserQuota = null;
+                    if (userQuota != null)
+                    {
+                        lockedUserQuota = await _context.UserStorageQuotas
+                            .FirstOrDefaultAsync(q => q.UserId == userId, cancellationToken);
+                        if (lockedUserQuota != null && lockedUserQuota.UsedBytes + request.FileSize > lockedUserQuota.QuotaBytes)
+                        {
+                            await transaction.RollbackAsync(cancellationToken);
+                            throw new InvalidOperationException($"Hết dung lượng cá nhân được phân bổ! (Đã dùng: {FormatBytes(lockedUserQuota.UsedBytes)} / Hạn mức: {FormatBytes(lockedUserQuota.QuotaBytes)}).");
+                        }
+                    }
+
+                    // Cập nhật dung lượng sử dụng
+                    lockedTenant.StorageUsedBytes += request.FileSize;
+
+                    if (user.DepartmentId.HasValue)
+                    {
+                        var dept = await _context.Departments
+                            .FirstOrDefaultAsync(d => d.Id == user.DepartmentId.Value, cancellationToken);
+                        if (dept != null)
+                        {
+                            dept.StorageUsedBytes += request.FileSize;
+                        }
+                    }
+
+                    var lockedProvider = await _context.StorageProviders
+                        .FirstOrDefaultAsync(p => p.Id == provider.Id, cancellationToken);
+                    if (lockedProvider != null)
+                    {
+                        lockedProvider.UsedCapacityBytes += request.FileSize;
+                    }
+
+                    if (lockedUserQuota != null)
+                    {
+                        lockedUserQuota.UsedBytes += request.FileSize;
+                    }
+
+                    _context.FileEntries.Add(fileEntry);
+                    _context.AuditLogs.Add(auditLog);
+
+                    await _context.SaveChangesAsync(cancellationToken);
+                    await transaction.CommitAsync(cancellationToken);
+
+                    _logger.LogInformation("Successfully uploaded file {FileName} with ID {FileId} to {ProviderType}",
+                        safeFileName, fileEntry.Id, provider.Type);
+
+                    return Result<FileEntryDto>.Success(dto);
+                }
+                catch
+                {
+                    await transaction.RollbackAsync(cancellationToken);
+                    _context.ChangeTracker.Clear();
+                    throw;
+                }
+            });
+        }
+        catch (Exception dbEx)
+        {
+            // BỒI HOÀN: Xóa file vừa upload trên Cloud Storage Provider để chống Ghost File Leak
+            _logger.LogError(dbEx, "Lỗi khi ghi nhận dữ liệu CSDL sau khi upload file {FileName} lên Cloud. Bắt đầu bồi hoàn (xóa file {StorageKey})...", safeFileName, storageKey);
+            try
+            {
+                await storageService.DeleteFileAsync(storageKey, CancellationToken.None);
+                _logger.LogInformation("Bồi hoàn thành công: Đã xóa tệp tin mồ côi {StorageKey} trên Cloud Provider.", storageKey);
+            }
+            catch (Exception deleteEx)
+            {
+                _logger.LogCritical(deleteEx, "CẢNH BÁO BỒI HOÀN THẤT BẠI: Không thể xóa tệp tin mồ côi {StorageKey} trên Cloud Provider!", storageKey);
+            }
+
+            return Result<FileEntryDto>.Failure($"Lỗi khi ghi nhận thông tin tệp tin vào cơ sở dữ liệu: {dbEx.Message}");
+        }
     }
 
     private static string FormatBytes(long bytes)

@@ -77,6 +77,9 @@ namespace CleanArchCqrs.Application.Users.Commands.Login
             var token =
                 _jwtTokenService.GenerateAccessToken(user, resolvedRole, permissions);
 
+            user.MarkLogin();
+            _context.Users.Update(user);
+
             var refreshToken = Guid.NewGuid().ToString("N");
             var refreshTokenExpiresAt = DateTime.UtcNow.AddDays(7);
             var refreshTokenHash = HashRefreshToken(refreshToken);
@@ -102,7 +105,8 @@ namespace CleanArchCqrs.Application.Users.Commands.Login
                 user.TenantId,
                 permissions.ToList(),
                 refreshToken,
-                refreshTokenExpiresAt);
+                refreshTokenExpiresAt,
+                user.DepartmentId);
         }
 
         private static string HashRefreshToken(string refreshToken)

@@ -18,11 +18,6 @@ namespace CleanArchCqrs.API.Controllers;
 [Route("api/files")]
 public class FilesController : ApiControllerBase
 {
-    private static readonly HashSet<string> BlockedExtensions = new(StringComparer.OrdinalIgnoreCase)
-    {
-        ".exe", ".bat", ".cmd", ".sh", ".php", ".vbs", ".js", ".ps1", ".msi", ".dll", ".jar", ".com", ".pif", ".scr", ".hta"
-    };
-
     /// <summary>
     /// Uploads a single file or multiple files with Quota validation, Virus scan, Hash calculation, and Multi-Cloud routing.
     /// </summary>
@@ -53,18 +48,6 @@ public class FilesController : ApiControllerBase
         {
             if (item.Length == 0) continue;
 
-            var ext = Path.GetExtension(item.FileName);
-            if (!string.IsNullOrEmpty(ext) && BlockedExtensions.Contains(ext))
-            {
-                response.Failed.Add(new FileUploadFailureDto
-                {
-                    FileName = item.FileName,
-                    FileSize = item.Length,
-                    Error = $"Tệp tin '{item.FileName}' có định dạng không được phép tải lên hệ thống vì lý do bảo mật."
-                });
-                continue;
-            }
-
             try
             {
                 using var stream = item.OpenReadStream();
@@ -88,7 +71,7 @@ public class FilesController : ApiControllerBase
                     {
                         FileName = item.FileName,
                         FileSize = item.Length,
-                        Error = result.Error ?? "Không thể lưu trữ tệp tin."
+                        Error = result.Error ?? (result.Errors != null && result.Errors.Any() ? string.Join("; ", result.Errors) : "Không thể lưu trữ tệp tin.")
                     });
                 }
             }
@@ -115,6 +98,7 @@ public class FilesController : ApiControllerBase
     [ProducesResponseType(typeof(Result), StatusCodes.Status400BadRequest)]
     public async Task<ActionResult> GetTenantFiles(
         [FromQuery] Guid? tenantId, 
+        [FromQuery] Guid? departmentId,
         [FromQuery] Guid? folderId,
         [FromQuery] int pageNumber = 1,
         [FromQuery] int pageSize = 20,
@@ -123,6 +107,7 @@ public class FilesController : ApiControllerBase
         var query = new GetTenantFilesQuery
         {
             TenantId = tenantId,
+            DepartmentId = departmentId,
             FolderId = folderId,
             PageNumber = pageNumber,
             PageSize = pageSize,

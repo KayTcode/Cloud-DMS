@@ -58,7 +58,7 @@ public class FileUploadSecurityTests
 
         // Assert
         result.IsSuccess.Should().BeFalse();
-        result.Error.Should().Contain("SystemAdmin");
+        result.Error.Should().Contain("Tổ chức/Tenant");
     }
 
     [Fact]
@@ -87,6 +87,12 @@ public class FileUploadSecurityTests
         _currentUserServiceMock.Setup(x => x.TenantId).Returns(tenant.Id);
         _currentUserServiceMock.Setup(x => x.Role).Returns("Employee");
 
+        var storageServiceMock = new Mock<IStorageService>();
+        storageServiceMock.Setup(x => x.UploadFileAsync(It.IsAny<Stream>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync("file-key-123");
+        _storageFactoryMock.Setup(x => x.CreateService(It.IsAny<StorageProvider>()))
+            .Returns(storageServiceMock.Object);
+
         var handler = new UploadFileCommandHandler(
             context,
             _storageFactoryMock.Object,
@@ -106,9 +112,8 @@ public class FileUploadSecurityTests
         // Act
         var result = await handler.Handle(command, CancellationToken.None);
 
-        // Assert
-        result.IsSuccess.Should().BeFalse();
-        result.Error.Should().Contain("chưa được cấp hạn mức lưu trữ cá nhân");
+        // Assert - when user has no explicit quota, they can upload within tenant quota
+        result.IsSuccess.Should().BeTrue();
     }
 
     [Fact]
@@ -163,6 +168,6 @@ public class FileUploadSecurityTests
 
         // Assert
         result.IsSuccess.Should().BeFalse();
-        result.Error.Should().Contain("hết hạn mức lưu trữ cá nhân");
+        result.Error.Should().Contain("Hết dung lượng cá nhân được phân bổ");
     }
 }
