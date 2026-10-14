@@ -51,7 +51,7 @@ Cloud-DMS/
 │   ├── CleanArchCqrs.Application/      # CQRS Commands & Queries, DTOs, Behaviors, Interfaces
 │   ├── CleanArchCqrs.Infrastructure/   # EF Core DbContext, ClamAV, EmailService, Cloud Storage Services
 │   └── CleanArchCqrs.API/              # Controllers, Middlewares, Rate Limiter, Program.cs
-├── Cloud-DMS-FE/                       # Ứng dụng Frontend React Vite
+├── ../Cloud-DMS-FE/                    # Checkout Frontend React Vite cùng cấp
 │   ├── src/
 │   │   ├── features/                   # Modules: auth, system-admin, tenants, department, user
 │   │   ├── api/                        # axiosClient & refresh token interceptor
@@ -103,12 +103,29 @@ dotnet run --project src/CleanArchCqrs.API
 - Swagger UI tài liệu API: `http://localhost:5000/` hoặc `https://localhost:5001/`
 - Kiểm tra trạng thái hệ thống: `GET http://localhost:5000/health` (Healthy)
 
-### 4. Khởi Chạy Bằng Docker Compose (Toàn Diện)
-Hệ thống cung cấp sẵn `docker-compose.yml` tích hợp 3 services: **Backend API (.NET 8 non-root)**, **MySQL 8.0**, và **ClamAV Antivirus Daemon**:
-```bash
-cp .env.example .env
-docker compose up -d --build
+### 4. Khởi Chạy Full-stack Local trên Windows
+
+Chuẩn bị Docker Desktop, Node.js/npm và checkout frontend ở thư mục cùng cấp `../Cloud-DMS-FE`. Frontend phải có file `.env` cục bộ đúng URL API; không commit file này. Cấu hình backend cục bộ cũng phải được cấp ngoài mã nguồn theo quy trình của môi trường. Compose local dùng `Development`, CORS `http://localhost:3000` và giữ `Database:InitializeOnStartup=false`; khởi tạo schema cần thực hiện riêng theo quy trình được duyệt.
+
+Từ bất kỳ thư mục hiện hành nào, gọi script bằng đường dẫn đến file; script tự xác định repository, kiểm tra Docker/npm/frontend và chạy backend cùng dependencies bằng Compose trước khi chạy `npm start` trong frontend:
+
+```powershell
+& 'C:\đường-dẫn\Cloud-DMS\deploy\Start-Local.ps1'
 ```
+
+Khi đang ở checkout backend, lệnh ngắn là:
+
+```powershell
+.\deploy\Start-Local.ps1
+```
+
+`npm start` chạy ở foreground; nhấn `Ctrl+C` trong cửa sổ đó để dừng frontend. Sau đó dừng backend/dependencies mà không xóa container, volume hoặc image:
+
+```powershell
+.\deploy\Stop-Local.ps1
+```
+
+`deploy/compose.local.yml` chỉ dùng cho local development. Triển khai search/read dùng `deploy/compose.search-read.yml` và runbook riêng.
 
 ### 5. Chạy Kiểm Thử Tự Động (Automated Testing)
 Bộ kiểm thử tích hợp 20 kịch bản Unit & Integration test bảo vệ Quota, IDOR, phân quyền và bảo mật:
@@ -116,13 +133,8 @@ Bộ kiểm thử tích hợp 20 kịch bản Unit & Integration test bảo vệ
 dotnet test tests/CleanArchCqrs.Tests/CleanArchCqrs.Tests.csproj
 ```
 
-### 6. Chạy Frontend
-```bash
-cd Cloud-DMS-FE
-npm install
-npm run dev
-```
-Truy cập giao diện Web tại `http://localhost:5173/`.
+### 6. Chạy Frontend Thủ Công
+Từ checkout cùng cấp `../Cloud-DMS-FE`, sau khi đã cài dependencies của frontend theo hướng dẫn riêng, chạy `npm start`. Script ở mục 4 thực hiện lệnh này tự động.
 
 ---
 

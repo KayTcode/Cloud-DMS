@@ -3,7 +3,7 @@ services:
   api:
     build:
       context: ..
-      dockerfile: Dockerfile
+      dockerfile: deploy/api/Dockerfile
     env_file: ${CLOUD_DMS_ENV_FILE:?Đặt đường dẫn file cấu hình bí mật ngoài repository}
     environment:
       ASPNETCORE_ENVIRONMENT: Production
@@ -59,7 +59,9 @@ services:
     mem_limit: 2g
     restart: unless-stopped
   embedding:
-    build: ../services/embedding
+    build:
+      context: ../services/embedding
+      dockerfile: ../../deploy/embedding/Dockerfile
     networks: [backend]
     read_only: true
     tmpfs: ["/tmp:size=64m,noexec,nosuid"]
@@ -83,7 +85,9 @@ services:
     restart: unless-stopped
   preview:
     profiles: [preview]
-    build: ../services/preview
+    build:
+      context: ../services/preview
+      dockerfile: ../../deploy/preview/Dockerfile
     environment:
       CONVERTER_VERSION: libreoffice-sandbox-v1
     networks: [backend]

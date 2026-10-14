@@ -3,9 +3,9 @@
 Yêu cầu .NET 8, Docker Desktop Linux đang chạy; model thật trong `services/embedding/model/` khớp manifest. Không commit model. Chuẩn bị image riêng:
 
 ```powershell
-docker build -t cloud-dms-embedding-task12 services/embedding
-docker build -t cloud-dms-preview-task12 services/preview
-docker build -t cloud-dms-minio-tests:2025-10-15 -f deploy/minio/Dockerfile .
+docker build -t cloud-dms-embedding-task12 -f deploy/embedding/Dockerfile services/embedding
+docker build -t cloud-dms-preview-task12 -f deploy/preview/Dockerfile services/preview
+docker build -t cloud-dms-minio-tests:2025-10-15 -f deploy/minio/Dockerfile deploy/minio
 pwsh -File tools/search-read-benchmark/run.ps1
 ```
 
