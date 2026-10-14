@@ -82,7 +82,11 @@ public sealed class DocumentIndexWorker(IServiceScopeFactory scopes, IOptions<Do
             string? failure = null;
             try
             {
-                await scope.ServiceProvider.GetRequiredService<DocumentIndexProcessor>().ProcessAsync(candidate, owner, job.Token);
+                if (candidate.EventType == "PreviewRequested")
+                    await scope.ServiceProvider.GetRequiredService<CleanArchCqrs.Infrastructure.Preview.PreviewJobProcessor>()
+                        .ProcessAsync(candidate, owner, job.Token);
+                else
+                    await scope.ServiceProvider.GetRequiredService<DocumentIndexProcessor>().ProcessAsync(candidate, owner, job.Token);
             }
             catch (Exception ex)
             {

@@ -17,11 +17,20 @@ public sealed class FileTextExtractor(IOptions<DocumentIndexOptions> options) : 
         ct = deadline.Token;
         if (!content.CanSeek || content.Length > DocumentIndexOptions.AnalysisBytes)
             return new("application/octet-stream", [], true, "ANALYSIS_BYTE_LIMIT");
-        byte[] magic = new byte[8];
-        var count = await content.ReadAsync(magic, ct);
+        byte[] magic = new byte[16];
+        var count = await content.ReadAtLeastAsync(magic, magic.Length, false, ct);
         content.Position = 0;
         try
         {
+            // Preserve a verified raster MIME for read/preview while keeping images metadata-only.
+            // Never promote SVG/HTML or trust the client extension/content-type.
+            var imageMime = count >= 8 && magic.AsSpan(0, 8).SequenceEqual(new byte[] { 137, 80, 78, 71, 13, 10, 26, 10 }) ? "image/png"
+                : count >= 3 && magic[0] == 255 && magic[1] == 216 && magic[2] == 255 ? "image/jpeg"
+                : count >= 6 && (magic.AsSpan(0, 6).SequenceEqual("GIF87a"u8) || magic.AsSpan(0, 6).SequenceEqual("GIF89a"u8)) ? "image/gif"
+                : count >= 16 && magic.AsSpan(0, 4).SequenceEqual("RIFF"u8) && magic.AsSpan(8, 4).SequenceEqual("WEBP"u8)
+                    && (magic.AsSpan(12, 4).SequenceEqual("VP8 "u8) || magic.AsSpan(12, 4).SequenceEqual("VP8L"u8)
+                        || magic.AsSpan(12, 4).SequenceEqual("VP8X"u8)) ? "image/webp" : null;
+            if (imageMime is not null) return new(imageMime, [], false, "NO_EXTRACTABLE_TEXT");
             if (count >= 5 && magic.AsSpan(0, 5).SequenceEqual("%PDF-"u8))
                 return await PdfAsync(content, ct);
             if (count >= 4 && magic[0] == 'P' && magic[1] == 'K' && magic[2] == 3 && magic[3] == 4)

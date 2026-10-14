@@ -60,6 +60,16 @@ namespace CleanArchCqrs.Infrastructure.DependencyInjection
             services.AddScoped<IFileAccessService, FileAccessService>();
             services.AddScoped<IKeywordSearchService, MySqlKeywordSearchService>();
             services.AddDataProtection();
+            services.AddSingleton<IFileTextCursorProtector, CleanArchCqrs.Infrastructure.Preview.FileTextCursorProtector>();
+            services.AddSingleton(new FileTextOptions(EmbeddingOptions.PinnedModel));
+            services.AddOptions<CleanArchCqrs.Infrastructure.Preview.PreviewOptions>().Bind(configuration.GetSection("Preview"))
+                .Validate(o => ValidInternalEndpoint(o.Endpoint) && o.ConverterVersion.Length is >= 1 and <= 48
+                    && o.ConverterVersion.All(c => char.IsAsciiLetterOrDigit(c) || c is '-' or '.'), "Invalid Preview options.").ValidateOnStart();
+            services.AddScoped<IPreviewProvider, CleanArchCqrs.Infrastructure.Preview.PreviewProvider>();
+            services.AddScoped<CleanArchCqrs.Infrastructure.Preview.PreviewJobProcessor>();
+            services.AddScoped(sp => new CleanArchCqrs.Infrastructure.Preview.PreviewConverterClient(
+                new HttpClient(new SocketsHttpHandler { AllowAutoRedirect = false, UseProxy = false })
+                { Timeout = TimeSpan.FromSeconds(65) }, sp.GetRequiredService<IOptions<CleanArchCqrs.Infrastructure.Preview.PreviewOptions>>()));
             services.AddScoped<ISearchSessionStore, SearchSessionStore>();
             services.AddScoped<CleanArchCqrs.Application.Features.Files.Queries.SearchFiles.SearchCandidateReader>();
             services.AddOptions<DocumentIndexOptions>().Bind(configuration.GetSection("SearchIndex"))

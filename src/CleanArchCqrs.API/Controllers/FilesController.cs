@@ -15,6 +15,9 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
 using CleanArchCqrs.Application.Features.Files.Queries.SearchFiles;
+using CleanArchCqrs.Application.Features.Files.Commands.RequestFilePreview;
+using CleanArchCqrs.Application.Features.Files.Queries.GetFilePreview;
+using CleanArchCqrs.Application.Features.Files.Queries.GetFileText;
 
 namespace CleanArchCqrs.API.Controllers;
 
@@ -22,6 +25,39 @@ namespace CleanArchCqrs.API.Controllers;
 [Route("api/files")]
 public class FilesController : ApiControllerBase
 {
+    [Authorize(Policy = "file.read")]
+    [EnableRateLimiting("file-search")]
+    [HttpPost("{id:guid}/preview")]
+    public async Task<ActionResult> RequestPreview(Guid id, CancellationToken ct)
+    {
+        Response.Headers.CacheControl = "no-store";
+        return await FilePreviewHttpResult.ExecuteAsync(async () =>
+            FilePreviewHttpResult.Preview(await Sender.Send(new RequestFilePreviewCommand(id), ct)), ct);
+    }
+
+    [Authorize(Policy = "file.read")]
+    [EnableRateLimiting("file-search")]
+    [HttpGet("{id:guid}/preview")]
+    public async Task<ActionResult> GetPreview(Guid id, CancellationToken ct)
+    {
+        Response.Headers.CacheControl = "no-store";
+        return await FilePreviewHttpResult.ExecuteAsync(async () =>
+            FilePreviewHttpResult.Preview(await Sender.Send(new GetFilePreviewQuery(id), ct)), ct);
+    }
+
+    [Authorize(Policy = "file.read")]
+    [EnableRateLimiting("file-search")]
+    [HttpGet("{id:guid}/text")]
+    public async Task<ActionResult> GetText(Guid id, [FromQuery] int limit = 20,
+        [FromQuery] string? cursor = null, CancellationToken ct = default)
+    {
+        Response.Headers.CacheControl = "no-store";
+        return await FilePreviewHttpResult.ExecuteAsync(async () =>
+        {
+            var result = await Sender.Send(new GetFileTextQuery(id, limit, cursor), ct);
+            return new ObjectResult(result) { StatusCode = result.Status == "pending" ? 202 : result.Status == "unavailable" ? 404 : 200 };
+        }, ct);
+    }
     private static readonly HashSet<string> BlockedExtensions = new(StringComparer.OrdinalIgnoreCase)
     {
         ".exe", ".bat", ".cmd", ".sh", ".php", ".vbs", ".js", ".ps1", ".msi", ".dll", ".jar", ".com", ".pif", ".scr", ".hta"

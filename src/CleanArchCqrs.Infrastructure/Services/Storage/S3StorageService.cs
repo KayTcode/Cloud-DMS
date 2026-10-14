@@ -8,11 +8,21 @@ using CleanArchCqrs.Application.Common.Interfaces;
 namespace CleanArchCqrs.Infrastructure.Services.Storage;
 
 // Provider configuration is encrypted by the existing storage-provider flow.
-public sealed class S3StorageService : IStorageService, IMultipartObjectStorage, IIntentObjectStorage
+public sealed class S3StorageService : IStorageService, IMultipartObjectStorage, IIntentObjectStorage, IPrivateArtifactStorage
 {
     private readonly AmazonS3Client _client;
     private readonly S3StorageSettings _settings;
     private int _disposed;
+
+    public async Task PutPrivateArtifactAsync(string key, Stream content, CancellationToken ct)
+    {
+        if (!key.StartsWith("previews/", StringComparison.Ordinal)) throw new ArgumentException("ARTIFACT_KEY");
+        await _client.PutObjectAsync(new PutObjectRequest
+        {
+            BucketName = _settings.Bucket, Key = key, InputStream = content,
+            ContentType = "application/pdf", CannedACL = S3CannedACL.Private
+        }, ct);
+    }
 
     public S3StorageService(string rawConfigJson)
     {

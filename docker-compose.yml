@@ -21,6 +21,8 @@ services:
       - SearchIndex__TokenizerEndpoint=http://embedding:8001/
       - Embedding__Endpoint=http://embedding:8001/
       - Qdrant__Endpoint=http://qdrant:6333/
+      - Preview__Endpoint=http://preview:8002/
+      - Preview__Enabled=${PREVIEW_ENABLED:-false}
     depends_on:
       mysql:
         condition: service_healthy
@@ -76,6 +78,23 @@ services:
     security_opt: ["no-new-privileges:true"]
     mem_limit: 2g
     cpus: 2
+    pids_limit: 64
+    restart: unless-stopped
+
+  preview:
+    build:
+      context: ./services/preview
+    networks: [search-internal]
+    read_only: true
+    user: "10001:10001"
+    tmpfs:
+      - "/tmp:size=16m,noexec,nosuid,nodev,uid=10001,gid=10001,mode=0700"
+      - "/jobs:size=256m,noexec,nosuid,nodev,uid=10001,gid=10001,mode=0700"
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    mem_limit: 512m
+    memswap_limit: 512m
+    cpus: 1
     pids_limit: 64
     restart: unless-stopped
 
