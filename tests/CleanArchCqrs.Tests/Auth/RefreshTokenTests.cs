@@ -2,7 +2,7 @@ using System.Security.Cryptography;
 using System.Text;
 using CleanArchCqrs.Application.Common.Interfaces;
 using CleanArchCqrs.Application.Common.Interfaces.Repositories;
-using CleanArchCqrs.Application.Users.Commands.RefreshTokenAuth;
+using CleanArchCqrs.Application.Users.Commands.RefreshToken;
 using CleanArchCqrs.Domain.Entities;
 using CleanArchCqrs.Tests.Common;
 using FluentAssertions;
@@ -47,15 +47,17 @@ public class RefreshTokenTests
         context.RefreshTokens.Add(tokenRecord);
         await context.SaveChangesAsync();
 
-        var handler = new RefreshTokenCommandHandler(context, _jwtTokenServiceMock.Object, _userAuthRepoMock.Object);
+        var handler = new RefreshTokenCommandHandler(context, _userAuthRepoMock.Object, _jwtTokenServiceMock.Object);
 
         // Act
         var result = await handler.Handle(new RefreshTokenCommand(rawToken), CancellationToken.None);
 
         // Assert
         result.Should().NotBeNull();
-        result.AccessToken.Should().Be("new-jwt-access-token");
-        result.RefreshToken.Should().NotBe(rawToken); // Rotated to new raw token
+        result.IsSuccess.Should().BeTrue();
+        result.Value.Should().NotBeNull();
+        result.Value!.AccessToken.Should().Be("new-jwt-access-token");
+        result.Value.RefreshToken.Should().NotBe(rawToken); // Rotated to new raw token
 
         // Verify old token was revoked in DB
         var oldToken = await context.RefreshTokens.FirstAsync(t => t.Id == tokenRecord.Id);
@@ -83,7 +85,7 @@ public class RefreshTokenTests
         context.RefreshTokens.Add(tokenRecord);
         await context.SaveChangesAsync();
 
-        var handler = new RefreshTokenCommandHandler(context, _jwtTokenServiceMock.Object, _userAuthRepoMock.Object);
+        var handler = new RefreshTokenCommandHandler(context, _userAuthRepoMock.Object, _jwtTokenServiceMock.Object);
 
         // Act & Assert
         var act = () => handler.Handle(new RefreshTokenCommand(rawToken), CancellationToken.None);
@@ -122,7 +124,7 @@ public class RefreshTokenTests
         context.RefreshTokens.AddRange(revokedToken, activeToken);
         await context.SaveChangesAsync();
 
-        var handler = new RefreshTokenCommandHandler(context, _jwtTokenServiceMock.Object, _userAuthRepoMock.Object);
+        var handler = new RefreshTokenCommandHandler(context, _userAuthRepoMock.Object, _jwtTokenServiceMock.Object);
 
         // Act & Assert: Attacker tries to use the already revoked token
         var act = () => handler.Handle(new RefreshTokenCommand(stolenRawToken), CancellationToken.None);

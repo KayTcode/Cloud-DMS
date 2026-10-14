@@ -215,6 +215,7 @@ namespace CleanArchCqrs.Infrastructure.Persistence
                     "user.read",
                     "user.create",
                     "user.update",
+                    "user.delete",
 
                     "department.read",
 
