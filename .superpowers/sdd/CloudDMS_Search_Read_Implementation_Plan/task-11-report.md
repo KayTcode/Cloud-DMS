@@ -36,3 +36,9 @@ Ma trận đầy đủ tên key/default/range có trong `docs/search-read-runboo
 - ClamAV coverage ackfalse mặc định nên tài liệu mới chưa sẵn sàng đọc; chỉ bật sau test coverage daemon/limits thật, luôn<2 GiB. File lớn pending là lựa chọn người dùng, không hứa read50 GiB.
 - Startup không tự sửa DB cũ; DB vá tay phải reconcile schema/history trước migrate. Migration Down cố ý không tháo cột/index/FK, rollback app giữ schema. AES hiệu lực cũ phải giữ trước quy trình tái mã hóa.
 - Rate limit mỗi process chưa distributed; chưa benchmark resource/latency/Recall. Test full deferred của Task4–10 và Task12 phải thực hiện sau code complete; không có kết quả pass/runtime readiness để công bố.
+
+## Sửa review Task11 — hai góp ý nhỏ
+
+Đã đối chiếu `task-11-review.md` và consumer AES/ProductionSecurity: comment env đổi thành `Encryption__SecretKey`, nhắc giữ khóa hiệu lực cũ khi nâng cấp trước quy trình tái mã hóa. Bỏ đúng block Role.Tenant lặp trong snapshot, giữ mapping gốc và toàn bộ schema/migration. Hai warning GoogleCredential baseline giữ theo dõi riêng.
+
+Chỉ sửa comment/snapshot/report; `git diff --check` đạt, không build lại, không chạy test/runtime/image/service/DB/migration theo yêu cầu. Các nghĩa vụ kiểm thử và giới hạn đã ghi ở trên giữ nguyên.
