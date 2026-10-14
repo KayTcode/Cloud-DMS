@@ -11,6 +11,7 @@ import os
 import platform
 import shutil
 import signal
+import socket
 import stat
 import subprocess
 import tempfile
@@ -22,6 +23,7 @@ from xml.etree import ElementTree
 
 MAX_INPUT = 100 * 1024 * 1024
 MAX_OUTPUT = 32 * 1024 * 1024
+TRANSPORT_SECONDS = 65
 VERSION = os.environ.get("CONVERTER_VERSION", "libreoffice-sandbox-v1")
 SLOTS = threading.BoundedSemaphore(1)
 ROOT = Path("/jobs")
@@ -137,6 +139,8 @@ def convert(work, extension, export_filter, deadline):
                 "--convert-to", "pdf:" + export_filter, "--outdir", "/work/out", "/work/input." + extension]
     process = None
     try:
+        if time.monotonic() >= deadline:
+            raise RuntimeError("CONVERTER_TIMEOUT")
         process = subprocess.Popen(command, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
                                    stderr=subprocess.DEVNULL, pass_fds=(fd,), start_new_session=True)
         try:
@@ -171,10 +175,13 @@ class Handler(http.server.BaseHTTPRequestHandler):
         pass  # No document names, hashes, body or dependency exception strings in logs.
 
     def setup(self):
+        self.transport = self.server.transport_for(self.request)
+        self.transport.check()
         super().setup()
-        self.connection.settimeout(65)
+        self.connection.settimeout(max(0.001, self.transport.deadline - time.monotonic()))
 
     def do_POST(self):
+        self.transport.check()
         if self.path != "/convert" or self.headers.get("Transfer-Encoding"):
             self.send_error(400)
             return
@@ -202,7 +209,9 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 with source.open("xb") as output:
                     remaining = size
                     while remaining:
+                        self.transport.check()
                         block = self.rfile.read(min(81920, remaining))
+                        self.transport.check()
                         if not block:
                             raise ValueError("TRUNCATED_INPUT")
                         output.write(block)
@@ -210,7 +219,10 @@ class Handler(http.server.BaseHTTPRequestHandler):
                         remaining -= len(block)
                 if hashed.hexdigest() != digest.lower():
                     raise ValueError("SOURCE_HASH_CHANGED")
-                deadline = time.monotonic() + 60
+                # The accepted connection's budget also bounds conversion-slot occupancy;
+                # uploading slowly cannot buy another sixty seconds at the end of the body.
+                self.transport.check()
+                deadline = min(time.monotonic() + 60, self.transport.deadline)
                 preflight(source, deadline)
                 data = convert(work, extension, export_filter, deadline)
                 self.send_response(200)
@@ -221,10 +233,48 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 self.end_headers()
                 self.wfile.write(data)
         except (Exception, MemoryError):
-            self.send_error(503, "CONVERSION_UNAVAILABLE")
+            if not self.transport.expired.is_set():
+                try:
+                    self.send_error(503, "CONVERSION_UNAVAILABLE")
+                except OSError:
+                    pass
         finally:
             SLOTS.release()
             self.close_connection = True
+
+
+class TransportDeadline:
+    def __init__(self, connection):
+        self.connection = connection
+        self.deadline = time.monotonic() + TRANSPORT_SECONDS
+        self.expired = threading.Event()
+        self.stopped = threading.Event()
+        self.watchdog = threading.Thread(target=self.watch, daemon=True)
+
+    def watch(self):
+        # Compute remaining time inside the watchdog too: delayed thread scheduling must
+        # not restart the budget established by accept().
+        if not self.stopped.wait(max(0, self.deadline - time.monotonic())):
+            self.expire()
+
+    def expire(self):
+        self.expired.set()
+        try:
+            # close() alone does not unblock buffered socket reads held by makefile().
+            self.connection.shutdown(socket.SHUT_RDWR)
+        except OSError:
+            pass
+
+    def check(self):
+        if self.expired.is_set() or time.monotonic() >= self.deadline:
+            self.expire()
+            raise TimeoutError("TRANSPORT_DEADLINE")
+
+    def stop(self):
+        self.stopped.set()
+        # No abandoned watchdog threads after normal requests or thread-start failures.
+        if self.watchdog.ident is not None:
+            self.watchdog.join()
 
 
 class BoundedServer(http.server.ThreadingHTTPServer):
@@ -232,7 +282,44 @@ class BoundedServer(http.server.ThreadingHTTPServer):
     request_queue_size = 8
     transport_slots = threading.BoundedSemaphore(8)
 
+    def __init__(self, *args, **kwargs):
+        self.transports = {}
+        self.transports_lock = threading.Lock()
+        super().__init__(*args, **kwargs)
+
+    def get_request(self):
+        request, address = super().get_request()
+        # Start immediately after accept, before verification, slot acquisition or thread
+        # scheduling. Header parsing in BaseHTTPRequestHandler is covered by this watchdog.
+        transport = TransportDeadline(request)
+        with self.transports_lock:
+            self.transports[request] = transport
+        try:
+            transport.watchdog.start()
+        except BaseException:
+            self.shutdown_request(request)
+            raise
+        return request, address
+
+    def transport_for(self, request):
+        with self.transports_lock:
+            return self.transports[request]
+
+    def shutdown_request(self, request):
+        try:
+            super().shutdown_request(request)
+        finally:
+            with self.transports_lock:
+                transport = self.transports.pop(request, None)
+            if transport is not None:
+                transport.stop()
+
     def process_request(self, request, address):
+        try:
+            self.transport_for(request).check()
+        except TimeoutError:
+            self.shutdown_request(request)
+            return
         if not self.transport_slots.acquire(blocking=False):
             self.shutdown_request(request)
             return
