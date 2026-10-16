@@ -47,7 +47,7 @@ public class GetTrashFilesQueryHandler(IApplicationDbContext db, IFileAccessCont
             .Include(f => f.Department)
             .Include(f => f.StorageProvider)
             .Where(f => f.TenantId == context.TenantId && f.IsDeleted && f.Lifecycle == FileLifecycle.Binned
-                && (admin || (isDeptAdmin ? (f.DepartmentId == userDeptId || f.OwningDepartmentId == userDeptId) : f.OwnerId == context.Actor.UserId)));
+                && (admin || (isDeptAdmin ? (f.DepartmentId == userDeptId || f.OwningDepartmentId == userDeptId) : (f.OwnerId == context.Actor.UserId || f.DeletedByUserId == context.Actor.UserId))));
 
         if (request.DepartmentId.HasValue) scope = scope.Where(f => f.DepartmentId == request.DepartmentId);
         if (!string.IsNullOrWhiteSpace(request.SearchTerm))
@@ -62,7 +62,7 @@ public class GetTrashFilesQueryHandler(IApplicationDbContext db, IFileAccessCont
         var rows = await scope.OrderByDescending(f => f.DeletedAt ?? f.CreatedAt).ThenBy(f => f.Id)
             .Skip((request.PageNumber - 1) * request.PageSize).Take(request.PageSize + 1)
             .Select(f => new { f.Id, f.DocumentVersion, f.AuthorizationVersion, f.OwnerId,
-                Item = new TrashFileItemDto(f.Id, f.TenantId, f.OwnerId, f.Owner.FirstName + " " + f.Owner.LastName,
+                Item = new TrashFileItemDto(f.Id, f.TenantId, f.OwnerId, f.Owner != null ? (f.Owner.FirstName + " " + f.Owner.LastName).Trim() : "Không xác định",
                     f.FolderId, f.Name, f.ContentType, f.SizeBytes, f.CreatedAt, f.DeletedAt, f.DeletedByUserId,
                     f.DeletedByUser != null ? (f.DeletedByUser.FirstName + " " + f.DeletedByUser.LastName).Trim() : null,
                     f.DepartmentId, f.Department != null ? f.Department.Name : null,
@@ -85,7 +85,7 @@ public class GetTrashFilesQueryHandler(IApplicationDbContext db, IFileAccessCont
 
     private async Task<AuthorizationResult> ReadAuthorityAsync(FileAccessContext context, CancellationToken ct)
     {
-        var input = await snapshots.ReadAsync(context.Actor, new("tenant", context.TenantId), ct);
+        var input = await snapshots.ReadAsync(context.Actor, new("none", null), ct);
         var result = evaluator.Evaluate(input with
         {
             Resource = new(context.TenantId, context.TenantId, null, Guid.Empty, FileLifecycle.Binned, 0)

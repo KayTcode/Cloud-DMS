@@ -275,10 +275,13 @@ namespace CleanArchCqrs.Infrastructure.Persistence
                     "file.read",
                     "file.upload",
                     "file.update",
+                    "file.delete",
+                    "file.share",
 
                     "folder.read",
                     "folder.create",
                     "folder.update",
+                    "folder.delete",
 
                     "storage.read"
                 ]

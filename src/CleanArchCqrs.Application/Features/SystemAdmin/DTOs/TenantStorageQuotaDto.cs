@@ -14,8 +14,10 @@ public class TenantStorageQuotaDto
 
     public long StorageQuotaBytes { get; set; }
     public long StorageUsedBytes { get; set; }
-    public long AvailableBytes => Math.Max(0, StorageQuotaBytes - StorageUsedBytes);
+    public long AllocatedToDepartmentsBytes { get; set; }
+    public long UnallocatedBytes => Math.Max(0, StorageQuotaBytes - AllocatedToDepartmentsBytes);
+    public long AvailableBytes => Math.Max(0, StorageQuotaBytes - Math.Max(StorageUsedBytes, AllocatedToDepartmentsBytes));
     public double UsagePercentage => StorageQuotaBytes > 0 
-        ? Math.Round((double)StorageUsedBytes / StorageQuotaBytes * 100, 2) 
+        ? Math.Round((double)Math.Max(StorageUsedBytes, AllocatedToDepartmentsBytes) / StorageQuotaBytes * 100, 2) 
         : 0;
 }

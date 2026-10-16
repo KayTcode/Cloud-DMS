@@ -25,6 +25,10 @@ public class GetTenantStorageQuotaQueryHandler : IRequestHandler<GetTenantStorag
         if (tenant == null)
             return null;
 
+        var totalAllocatedToDepts = await _context.Departments
+            .Where(d => d.TenantId == request.TenantId)
+            .SumAsync(d => d.QuotaBytes, cancellationToken);
+
         return new TenantStorageQuotaDto
         {
             TenantId = tenant.Id,
@@ -34,7 +38,8 @@ public class GetTenantStorageQuotaQueryHandler : IRequestHandler<GetTenantStorag
             StorageProviderName = tenant.StorageProvider?.Name,
             StorageProviderType = tenant.StorageProvider?.Type,
             StorageQuotaBytes = tenant.StorageQuotaBytes,
-            StorageUsedBytes = tenant.StorageUsedBytes
+            StorageUsedBytes = tenant.StorageUsedBytes,
+            AllocatedToDepartmentsBytes = totalAllocatedToDepts
         };
     }
 }

@@ -8,6 +8,9 @@ public class AuditLogDto
     public DateTime Timestamp { get; set; }
     public string Action { get; set; } = string.Empty;
     public string Actor { get; set; } = string.Empty;
+    public string? ActorEmail { get; set; }
+    public Guid? DepartmentId { get; set; }
+    public string? DepartmentName { get; set; }
     public string IpAddress { get; set; } = string.Empty;
     public string Status { get; set; } = "SUCCESS";
     public string Details { get; set; } = string.Empty;

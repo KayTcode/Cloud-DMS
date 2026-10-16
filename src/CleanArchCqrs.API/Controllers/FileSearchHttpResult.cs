@@ -14,7 +14,11 @@ internal static class FileSearchHttpResult
         catch (AuthorizationChangedException) { return Error(409, "AUTHORIZATION_CHANGED"); }
         catch (OperationCanceledException) { return Error(ct.IsCancellationRequested ? 499 : 504, "SEARCH_CANCELLED"); }
         // Never expose SQL, dependency payloads, candidate IDs, query text or exception messages.
-        catch (Exception) { return Error(503, "SEARCH_UNAVAILABLE"); }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[FileSearchHttpResult ERROR] {ex}");
+            return Error(503, "SEARCH_UNAVAILABLE");
+        }
     }
 
     private static ObjectResult Error(int status, string code) => new(new { code }) { StatusCode = status };

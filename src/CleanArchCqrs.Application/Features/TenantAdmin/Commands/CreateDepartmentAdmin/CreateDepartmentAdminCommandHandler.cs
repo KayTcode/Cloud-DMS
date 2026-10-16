@@ -142,7 +142,7 @@ public class CreateDepartmentAdminCommandHandler : IRequestHandler<CreateDepartm
             // tenant.StorageQuotaBytes - (existingDeptsQuota + pendingAdminsQuota)
             var existingDeptsQuota = await _context.Departments
                 .Where(d => d.TenantId == tenant.Id)
-                .SumAsync(d => d.StorageQuotaBytes, cancellationToken);
+                .SumAsync(d => d.QuotaBytes, cancellationToken);
 
             var pendingAdminsQuota = await _context.UserStorageQuotas
                 .Where(q => q.User.TenantId == tenant.Id && q.User.DepartmentId == null)
